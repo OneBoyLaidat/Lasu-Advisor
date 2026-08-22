@@ -13,8 +13,8 @@ interface AuthViewProps {
 export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onToggleDark }) => {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [selectedRoleTab, setSelectedRoleTab] = useState<UserRole>('student');
-  const [identifier, setIdentifier] = useState<string>('m.adebayo@lasu.edu.ng');
-  const [password, setPassword] = useState<string>('password123');
+  const [identifier, setIdentifier] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
   const [name, setName] = useState<string>('');
   const [matricOrStaffId, setMatricOrStaffId] = useState<string>('');
   const [department, setDepartment] = useState<string>(LASU_DEPARTMENTS[4]); // Computer Science
@@ -25,33 +25,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showDemoCredentials, setShowDemoCredentials] = useState<boolean>(false);
 
-  // Quick fill helper for testing registered institutional roles
-  const handleQuickFill = (role: UserRole) => {
-    setSelectedRoleTab(role);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    if (role === 'student') {
-      setIdentifier('m.adebayo@lasu.edu.ng');
-      setPassword('password123');
-    } else if (role === 'lecturer') {
-      setIdentifier('s.jenkins@lasu.edu.ng');
-      setPassword('password123');
-    } else if (role === 'hod') {
-      setIdentifier('j.miller@lasu.edu.ng');
-      setPassword('password123');
-    } else if (role === 'dean') {
-      setIdentifier('a.chen@lasu.edu.ng');
-      setPassword('password123');
-    }
-  };
-
   const handleRoleTabClick = (role: UserRole) => {
     setSelectedRoleTab(role);
     setErrorMessage(null);
-    // update prefilled sample if using default values
-    if (identifier.endsWith('@lasu.edu.ng') || identifier.startsWith('CSC/') || identifier.startsWith('STAFF/')) {
-      handleQuickFill(role);
-    }
   };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -222,7 +198,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Registered Email / Matric / Staff ID
+                Email / Matric / Staff ID
               </label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[18px]">
@@ -237,7 +213,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                     setIdentifier(e.target.value);
                     setErrorMessage(null);
                   }}
-                  placeholder="e.g. m.adebayo@lasu.edu.ng or CSC/21/0045"
+                  placeholder="Enter email, Matric No, or Staff ID"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2.5 pl-10 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 shadow-2xs"
                 />
               </div>
@@ -272,7 +248,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                     setPassword(e.target.value);
                     setErrorMessage(null);
                   }}
-                  placeholder="Enter your registered password"
+                  placeholder="Enter password"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2.5 pl-10 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 shadow-2xs"
                 />
               </div>
@@ -323,7 +299,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                 required
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Babatunde Fashola"
+                placeholder="Enter full name"
                 className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
               />
             </div>
@@ -338,7 +314,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                 required
                 value={matricOrStaffId}
                 onChange={(e) => setMatricOrStaffId(e.target.value)}
-                placeholder={selectedRoleTab === 'student' ? 'e.g. CSC/21/0045' : 'e.g. STAFF/CSC/088'}
+                placeholder={selectedRoleTab === 'student' ? 'Enter Matriculation Number' : 'Enter Staff ID'}
                 className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
               />
             </div>
@@ -376,7 +352,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                 required
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="e.g. yourname@lasu.edu.ng or gmail"
+                placeholder="Enter email address"
                 className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
               />
             </div>
@@ -391,7 +367,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 5 characters"
+                placeholder="Enter password (min. 5 characters)"
                 className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
               />
             </div>
