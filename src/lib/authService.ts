@@ -218,6 +218,9 @@ export function registerNewUser(data: {
   faculty: string;
   matricNo?: string;
   staffId?: string;
+  level?: string;
+  hasUploadedTranscript?: boolean;
+  transcriptFileName?: string;
 }): AuthResult {
   const cleanEmail = data.email.trim().toLowerCase();
   const cleanName = data.name.trim();
@@ -270,12 +273,16 @@ export function registerNewUser(data: {
     faculty: data.faculty,
     matricNo: data.role === 'student' ? cleanId : undefined,
     staffId: data.role !== 'student' ? cleanId : undefined,
-    level: data.role === 'student' ? '100 Level' : undefined,
+    level: data.role === 'student' ? (data.level || '100 Level') : undefined,
     avatarUrl:
       data.role === 'student'
         ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-        : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    hasUploadedTranscript: false,
+        : data.role === 'dean'
+        ? DEAN_AVATAR
+        : data.role === 'hod'
+        ? LECTURER_AVATAR
+        : ADVISER_AVATAR,
+    hasUploadedTranscript: !!data.hasUploadedTranscript,
   };
 
   accounts.unshift(newAccount);
@@ -292,7 +299,8 @@ export function registerNewUser(data: {
     staffId: newAccount.staffId,
     level: newAccount.level,
     avatarUrl: newAccount.avatarUrl,
-    hasUploadedTranscript: false,
+    hasUploadedTranscript: newAccount.hasUploadedTranscript ?? false,
+    transcriptFileName: data.transcriptFileName,
   };
 
   return {
