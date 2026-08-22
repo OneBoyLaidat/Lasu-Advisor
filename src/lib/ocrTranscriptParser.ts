@@ -1,12 +1,20 @@
 import { CourseResult } from '../types';
 
+export interface ParsedTranscriptCourse extends CourseResult {
+  isMissingScore?: boolean;
+  isMissingUnits?: boolean;
+  isMissingCode?: boolean;
+  isMissingTitle?: boolean;
+  isManuallyAdded?: boolean;
+}
+
 export interface ParsedTranscriptData {
   studentName?: string;
   matricNo?: string;
   session?: string;
   level?: string;
   department?: string;
-  courses: CourseResult[];
+  courses: ParsedTranscriptCourse[];
   totalUnits: number;
   passedUnits: number;
   carryoverUnits: number;
@@ -15,15 +23,26 @@ export interface ParsedTranscriptData {
   cgpa: number;
   degreeClass: string;
   fileName?: string;
+  rawTextExtracted?: string;
+  hasMissingFields: boolean;
+  missingFieldCount: number;
+  ocrConfidence: 'high' | 'partial' | 'low';
+  extractionMessage: string;
 }
 
 // Standard LASU NUC Grade point mapping
-export const calculateGradeAndPoints = (score: number): { grade: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'; gp: number; status: 'Passed' | 'Failed' } => {
-  if (score >= 70) return { grade: 'A', gp: 5, status: 'Passed' };
-  if (score >= 60) return { grade: 'B', gp: 4, status: 'Passed' };
-  if (score >= 50) return { grade: 'C', gp: 3, status: 'Passed' };
-  if (score >= 45) return { grade: 'D', gp: 2, status: 'Passed' };
-  if (score >= 40) return { grade: 'E', gp: 1, status: 'Passed' };
+export const calculateGradeAndPoints = (
+  score: number | string
+): { grade: 'A' | 'B' | 'C' | 'D' | 'E' | 'F'; gp: number; status: 'Passed' | 'Failed' } => {
+  const num = typeof score === 'string' ? parseFloat(score) : score;
+  if (isNaN(num) || num === null || num === undefined) {
+    return { grade: 'F', gp: 0, status: 'Failed' };
+  }
+  if (num >= 70) return { grade: 'A', gp: 5, status: 'Passed' };
+  if (num >= 60) return { grade: 'B', gp: 4, status: 'Passed' };
+  if (num >= 50) return { grade: 'C', gp: 3, status: 'Passed' };
+  if (num >= 45) return { grade: 'D', gp: 2, status: 'Passed' };
+  if (num >= 40) return { grade: 'E', gp: 1, status: 'Passed' };
   return { grade: 'F', gp: 0, status: 'Failed' };
 };
 
@@ -35,388 +54,204 @@ export const getDegreeClass = (cgpa: number): string => {
   return 'Pass Degree';
 };
 
-// Preset Lasu Sample Transcript Templates
-export const SAMPLE_TRANSCRIPT_PRESETS: Record<string, ParsedTranscriptData> = {
-  standard_300l: {
-    studentName: 'Michael Adebayo',
-    matricNo: 'CSC/21/0045',
-    session: '2023/2024',
-    level: '300 Level',
-    department: 'Computer Science',
-    fileName: 'LASU_Official_Transcript_300L_Adebayo.pdf',
-    totalUnits: 112,
-    passedUnits: 112,
-    carryoverUnits: 0,
-    totalGradePoints: 428,
-    gpa: 3.91,
-    cgpa: 3.82,
-    degreeClass: 'Second Class Honours (Upper Division)',
-    courses: [
-      {
-        code: 'CSC401',
-        title: 'Advanced Database Systems',
-        units: 3,
-        grade: 'A',
-        score: 78,
-        status: 'Passed',
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
-        gpPoints: 15,
-      },
-      {
-        code: 'CSC403',
-        title: 'Computational Intelligence & Neural Nets',
-        units: 4,
-        grade: 'A',
-        score: 82,
-        status: 'Passed',
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
-        gpPoints: 20,
-      },
-      {
-        code: 'CSC405',
-        title: 'Software Engineering II',
-        units: 3,
-        grade: 'B',
-        score: 65,
-        status: 'Passed',
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
-        gpPoints: 12,
-      },
-      {
-        code: 'MTH412',
-        title: 'Numerical Analysis & Computation',
-        units: 3,
-        grade: 'C',
-        score: 54,
-        status: 'Passed',
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
-        gpPoints: 9,
-      },
-      {
-        code: 'CSC302',
-        title: 'Operating Systems & Concurrency',
-        units: 3,
-        grade: 'A',
-        score: 75,
-        status: 'Passed',
-        semester: 'Spring 2024',
-        academicYear: '2023/2024',
-        gpPoints: 15,
-      },
-      {
-        code: 'CSC304',
-        title: 'Compiler Construction',
-        units: 3,
-        grade: 'A',
-        score: 79,
-        status: 'Passed',
-        semester: 'Spring 2024',
-        academicYear: '2023/2024',
-        gpPoints: 15,
-      },
-      {
-        code: 'CSC308',
-        title: 'Computer Networks & Security',
-        units: 3,
-        grade: 'B',
-        score: 68,
-        status: 'Passed',
-        semester: 'Spring 2024',
-        academicYear: '2023/2024',
-        gpPoints: 12,
-      },
-      {
-        code: 'GNS311',
-        title: 'Venture Creation & Entrepreneurship',
-        units: 2,
-        grade: 'A',
-        score: 84,
-        status: 'Passed',
-        semester: 'Spring 2024',
-        academicYear: '2023/2024',
-        gpPoints: 10,
-      },
-    ],
-  },
-  first_class_honours: {
-    studentName: 'Amina Yusuf',
-    matricNo: 'CSC/21/0144',
-    session: '2023/2024',
-    level: '300 Level',
-    department: 'Computer Science',
-    fileName: 'LASU_Academic_Distinction_Transcript.pdf',
-    totalUnits: 114,
-    passedUnits: 114,
-    carryoverUnits: 0,
-    totalGradePoints: 532,
-    gpa: 4.75,
-    cgpa: 4.66,
-    degreeClass: 'First Class Honours (Distinction)',
-    courses: [
-      {
-        code: 'CSC401',
-        title: 'Advanced Database Systems',
-        units: 3,
-        grade: 'A',
-        score: 88,
-        status: 'Passed',
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
-        gpPoints: 15,
-      },
-      {
-        code: 'CSC403',
-        title: 'Computational Intelligence & Neural Nets',
-        units: 4,
-        grade: 'A',
-        score: 91,
-        status: 'Passed',
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
-        gpPoints: 20,
-      },
-      {
-        code: 'CSC405',
-        title: 'Software Engineering II',
-        units: 3,
-        grade: 'A',
-        score: 84,
-        status: 'Passed',
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
-        gpPoints: 15,
-      },
-      {
-        code: 'MTH412',
-        title: 'Numerical Analysis & Computation',
-        units: 3,
-        grade: 'A',
-        score: 79,
-        status: 'Passed',
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
-        gpPoints: 15,
-      },
-      {
-        code: 'CSC302',
-        title: 'Operating Systems & Concurrency',
-        units: 3,
-        grade: 'A',
-        score: 86,
-        status: 'Passed',
-        semester: 'Spring 2024',
-        academicYear: '2023/2024',
-        gpPoints: 15,
-      },
-      {
-        code: 'CSC304',
-        title: 'Compiler Construction',
-        units: 3,
-        grade: 'A',
-        score: 82,
-        status: 'Passed',
-        semester: 'Spring 2024',
-        academicYear: '2023/2024',
-        gpPoints: 15,
-      },
-      {
-        code: 'CSC308',
-        title: 'Computer Networks & Security',
-        units: 3,
-        grade: 'A',
-        score: 77,
-        status: 'Passed',
-        semester: 'Spring 2024',
-        academicYear: '2023/2024',
-        gpPoints: 15,
-      },
-      {
-        code: 'CSC301',
-        title: 'Data Structures & Algorithms',
-        units: 3,
-        grade: 'A',
-        score: 94,
-        status: 'Passed',
-        semester: 'Fall 2023',
-        academicYear: '2023/2024',
-        gpPoints: 15,
-      },
-    ],
-  },
-  carryover_audit: {
-    studentName: 'Sarah Connor',
-    matricNo: 'CSC/21/0102',
-    session: '2023/2024',
-    level: '300 Level',
-    department: 'Computer Science',
-    fileName: 'SarahConnor_Remedial_ResultSlip.pdf',
-    totalUnits: 98,
-    passedUnits: 86,
-    carryoverUnits: 12,
-    totalGradePoints: 181,
-    gpa: 1.85,
-    cgpa: 1.85,
-    degreeClass: 'Third Class Honours (At Risk)',
-    courses: [
-      {
-        code: 'CSC301',
-        title: 'Data Structures & Algorithms',
-        units: 3,
-        grade: 'C',
-        score: 51,
-        status: 'Passed',
-        semester: 'Fall 2023',
-        academicYear: '2023/2024',
-        gpPoints: 9,
-      },
-      {
-        code: 'MAT301',
-        title: 'Discrete Mathematics',
-        units: 3,
-        grade: 'F',
-        score: 34,
-        status: 'Failed',
-        semester: 'Fall 2023',
-        academicYear: '2023/2024',
-        gpPoints: 0,
-      },
-      {
-        code: 'CSC201',
-        title: 'Computer Programming I (C++)',
-        units: 3,
-        grade: 'F',
-        score: 38,
-        status: 'Failed',
-        semester: 'Spring 2023',
-        academicYear: '2022/2023',
-        gpPoints: 0,
-      },
-      {
-        code: 'PHY102',
-        title: 'General Physics II',
-        units: 3,
-        grade: 'F',
-        score: 29,
-        status: 'Failed',
-        semester: 'Spring 2023',
-        academicYear: '2022/2023',
-        gpPoints: 0,
-      },
-      {
-        code: 'GNS101',
-        title: 'Use of English',
-        units: 2,
-        grade: 'B',
-        score: 62,
-        status: 'Passed',
-        semester: 'Fall 2023',
-        academicYear: '2023/2024',
-        gpPoints: 8,
-      },
-    ],
-  },
-};
+/**
+ * Extracts raw readable text content from an uploaded File (PDF, text, or image metadata).
+ * Strictly extracts data from the uploaded file without injecting synthetic data.
+ */
+export async function extractTextFromFile(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result === 'string') {
+        // Filter readable characters and line breaks
+        // In PDF streams, text often appears inside (text) Tj or BT ... ET blocks or plain strings
+        let cleanText = result;
+        if (result.includes('%PDF')) {
+          // Extract text literals from PDF syntax
+          const textMatches = result.match(/\(([^)]+)\)|\[([^\]]+)\]/g);
+          if (textMatches && textMatches.length > 0) {
+            const extracted = textMatches
+              .map((m) => m.replace(/[()[\]]/g, ''))
+              .filter((t) => t.trim().length > 1)
+              .join(' ');
+            if (extracted.trim().length > 20) {
+              cleanText = extracted;
+            }
+          }
+        }
+        resolve(cleanText);
+      } else {
+        resolve('');
+      }
+    };
+
+    reader.onerror = () => {
+      resolve('');
+    };
+
+    // Read as text to attempt raw ASCII/text stream extraction
+    reader.readAsText(file);
+  });
+}
 
 /**
- * Parses raw text extracted from a PDF/Image transcript using OCR heuristics
+ * Parses raw text extracted from a PDF/Image transcript using OCR heuristics.
+ * STRICT: Only extracts and populates data actually present in the document.
+ * If data is missing or unclear, flags it for manual user entry rather than guessing.
  */
 export function parseTranscriptText(rawText: string, fileName: string): ParsedTranscriptData {
-  const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
-  const courses: CourseResult[] = [];
+  const lines = rawText
+    .split(/[\r\n]+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
 
-  // Regex patterns to capture course codes like CSC401, CSC 401, MTH301, GNS 311, PHY 102
-  const courseCodeRegex = /([A-Z]{3})\s?([0-9]{3})/i;
-  // Regex to capture grades A, B, C, D, E, F
+  const courses: ParsedTranscriptCourse[] = [];
+  let missingFieldCount = 0;
+
+  // Regex patterns:
+  // Course codes: e.g. CSC401, CSC 401, MTH301, GNS 311, SEN 201, CIS 101, etc.
+  const courseCodeRegex = /\b([A-Z]{3})\s?([0-9]{3})\b/i;
+  // Units (1 to 6)
+  const unitRegex = /\b([1-6])\s?(?:unit|units|cu|cr|u)?\b/i;
+  // Scores (0 - 100)
+  const scoreRegex = /\b(100|[1-9][0-9]|[0-9])(?:\s?%|\s?\/100|\s?pts)?\b/;
+  // Grades (A, B, C, D, E, F)
   const gradeRegex = /\b([A-F])\b/;
-  // Regex to capture unit numbers (1 to 6)
-  const unitRegex = /\b([1-6])\b/;
-  // Regex to capture score (0-100)
-  const scoreRegex = /\b(100|[1-9]?[0-9])\b/;
 
-  // Check lines for course entries
+  // Check lines or tokens
   for (const line of lines) {
     const codeMatch = line.match(courseCodeRegex);
     if (codeMatch) {
       const code = `${codeMatch[1].toUpperCase()}${codeMatch[2]}`;
-      
-      // Look for grade in line
-      const gradeMatch = line.match(gradeRegex);
-      const grade = (gradeMatch ? gradeMatch[1].toUpperCase() : 'B') as 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
 
-      // Look for units in line
+      // Check if title can be extracted from remainder of the line
+      let title = line
+        .replace(courseCodeRegex, '')
+        .replace(scoreRegex, '')
+        .replace(unitRegex, '')
+        .replace(gradeRegex, '')
+        .replace(/[|,\-:;]/g, ' ')
+        .trim();
+
+      const isMissingTitle = !title || title.length < 3;
+      if (isMissingTitle) {
+        title = '';
+      }
+
+      // Check units
       const unitMatch = line.match(unitRegex);
-      const units = unitMatch ? parseInt(unitMatch[1], 10) : 3;
+      let units = 0;
+      let isMissingUnits = true;
+      if (unitMatch) {
+        units = parseInt(unitMatch[1], 10);
+        if (units >= 1 && units <= 6) {
+          isMissingUnits = false;
+        }
+      }
+      if (isMissingUnits) {
+        missingFieldCount++;
+      }
 
-      // Look for score in line
+      // Check score
       const scoreMatch = line.match(scoreRegex);
-      let score = scoreMatch ? parseInt(scoreMatch[1], 10) : 65;
-      if (score < 30 && grade === 'A') score = 78;
+      let score: number | '' = '';
+      let isMissingScore = true;
+      if (scoreMatch) {
+        const parsedScore = parseInt(scoreMatch[1], 10);
+        if (!isNaN(parsedScore) && parsedScore >= 0 && parsedScore <= 100) {
+          score = parsedScore;
+          isMissingScore = false;
+        }
+      }
 
-      const calc = calculateGradeAndPoints(score);
-      const finalGrade = gradeMatch ? grade : calc.grade;
-      const gp = finalGrade === 'A' ? 5 : finalGrade === 'B' ? 4 : finalGrade === 'C' ? 3 : finalGrade === 'D' ? 2 : finalGrade === 'E' ? 1 : 0;
-      const status = gp > 0 ? 'Passed' : 'Failed';
+      // Check grade
+      const gradeMatch = line.match(gradeRegex);
+      let grade: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | '-' = '-';
+      if (!isMissingScore && typeof score === 'number') {
+        const calc = calculateGradeAndPoints(score);
+        grade = calc.grade;
+      } else if (gradeMatch) {
+        grade = gradeMatch[1].toUpperCase() as 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+      }
 
-      // Infer title
-      let title = 'Computer Science Core Unit';
-      if (code.startsWith('CSC401')) title = 'Advanced Database Systems';
-      else if (code.startsWith('CSC403')) title = 'Computational Intelligence';
-      else if (code.startsWith('CSC405')) title = 'Software Engineering II';
-      else if (code.startsWith('MTH412')) title = 'Numerical Analysis';
-      else if (code.startsWith('CSC302')) title = 'Operating Systems & Concurrency';
-      else if (code.startsWith('CSC304')) title = 'Compiler Construction';
-      else if (code.startsWith('CSC308')) title = 'Computer Networks & Security';
-      else if (code.startsWith('GNS311')) title = 'Venture Creation & Entrepreneurship';
-      else if (code.startsWith('CSC301')) title = 'Data Structures & Algorithms';
-      else if (code.startsWith('MTH301')) title = 'Discrete Mathematics';
+      if (isMissingScore && grade === '-') {
+        missingFieldCount++;
+      }
+
+      const gp =
+        grade === 'A'
+          ? 5
+          : grade === 'B'
+          ? 4
+          : grade === 'C'
+          ? 3
+          : grade === 'D'
+          ? 2
+          : grade === 'E'
+          ? 1
+          : 0;
+
+      const status: 'Passed' | 'Failed' | 'In Progress' =
+        grade === '-' ? 'In Progress' : gp > 0 ? 'Passed' : 'Failed';
 
       courses.push({
         code,
         title,
-        units,
-        grade: finalGrade,
+        units: isMissingUnits ? 0 : units,
+        grade,
         score,
         status,
         semester: 'Fall 2024',
         academicYear: '2024/2025',
-        gpPoints: units * gp,
+        gpPoints: isMissingUnits ? 0 : units * gp,
+        isMissingScore,
+        isMissingUnits,
+        isMissingCode: false,
+        isMissingTitle,
       });
     }
   }
 
-  // If no courses were extracted via raw lines, populate with intelligent fallback based on document characteristics
-  if (courses.length === 0) {
-    return {
-      ...SAMPLE_TRANSCRIPT_PRESETS.standard_300l,
-      fileName,
-    };
-  }
-
-  const totalUnits = courses.reduce((acc, c) => acc + c.units, 0);
-  const passedUnits = courses.filter((c) => c.status === 'Passed').reduce((acc, c) => acc + c.units, 0);
+  // Strictly calculate summary statistics ONLY from validly extracted course data
+  const validCourses = courses.filter((c) => !c.isMissingUnits && !c.isMissingScore && c.units > 0);
+  const totalUnits = validCourses.reduce((acc, c) => acc + c.units, 0);
+  const passedUnits = validCourses
+    .filter((c) => c.status === 'Passed')
+    .reduce((acc, c) => acc + c.units, 0);
   const carryoverUnits = totalUnits - passedUnits;
-  const totalGradePoints = courses.reduce((acc, c) => acc + c.gpPoints, 0);
+  const totalGradePoints = validCourses.reduce((acc, c) => acc + c.gpPoints, 0);
   const gpa = totalUnits > 0 ? parseFloat((totalGradePoints / totalUnits).toFixed(2)) : 0;
   const cgpa = gpa;
 
+  const hasMissingFields = missingFieldCount > 0 || courses.length === 0;
+  let ocrConfidence: 'high' | 'partial' | 'low' = 'high';
+  let extractionMessage = 'All course records strictly extracted from uploaded document.';
+
+  if (courses.length === 0) {
+    ocrConfidence = 'low';
+    extractionMessage =
+      'No clear course records could be detected from this file. Please manually input your course details below.';
+  } else if (hasMissingFields) {
+    ocrConfidence = 'partial';
+    extractionMessage = `OCR extraction partial: ${missingFieldCount} field(s) could not be read clearly. Please verify and input the missing information.`;
+  }
+
   return {
-    studentName: 'Extracted Student Record',
-    matricNo: 'CSC/21/0045',
-    session: '2023/2024',
-    level: '300 Level',
-    department: 'Computer Science',
-    fileName,
+    courses,
     totalUnits,
     passedUnits,
     carryoverUnits,
     totalGradePoints,
     gpa,
     cgpa,
-    degreeClass: getDegreeClass(cgpa),
-    courses,
+    degreeClass: totalUnits > 0 ? getDegreeClass(cgpa) : 'Pending Complete Data Entry',
+    fileName,
+    rawTextExtracted: rawText.slice(0, 1000),
+    hasMissingFields,
+    missingFieldCount,
+    ocrConfidence,
+    extractionMessage,
   };
 }

@@ -12,6 +12,7 @@ interface LecturerDashboardProps {
   onNudgeStudent: (adviseeId: string, studentName: string) => void;
   onNudgeAllMissing: (missingCount: number) => void;
   onViewStudentTranscript?: (advisee: Advisee) => void;
+  onOpenAdvisorChat?: (studentName?: string) => void;
 }
 
 export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
@@ -25,6 +26,7 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
   onNudgeStudent,
   onNudgeAllMissing,
   onViewStudentTranscript,
+  onOpenAdvisorChat,
 }) => {
   const [filterRoster, setFilterRoster] = useState<string>('all');
   const [rosterSearch, setRosterSearch] = useState<string>('');
@@ -62,11 +64,22 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenAdvisorChat && (
+            <button
+              id="lecturer-messages-btn"
+              onClick={() => onOpenAdvisorChat()}
+              className="bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px] text-emerald-600">forum</span>
+              Advising Messages
+            </button>
+          )}
+
           {missingAdvisees.length > 0 && (
             <button
               id="nudge-all-missing-btn"
               onClick={() => onNudgeAllMissing(missingAdvisees.length)}
-              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors shadow-xs"
+              className="bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3.5 py-2 rounded-lg flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
             >
               <span className="material-symbols-outlined text-[16px]">notifications_active</span>
               Nudge All Missing ({missingAdvisees.length})
@@ -534,9 +547,19 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
                             </button>
                           )}
 
+                          {onOpenAdvisorChat && (
+                            <button
+                              onClick={() => onOpenAdvisorChat(advisee.name)}
+                              className="bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 px-2 py-1 rounded text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                              title={`Direct Message ${advisee.name}`}
+                            >
+                              <span className="material-symbols-outlined text-[14px] text-emerald-600">forum</span>
+                            </button>
+                          )}
+
                           <button
                             onClick={() => onViewStudentDetails(advisee)}
-                            className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                             title="Full Academic Dossier"
                           >
                             <span className="material-symbols-outlined text-[18px]">more_vert</span>

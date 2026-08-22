@@ -307,40 +307,33 @@ export function App() {
     showToast('Agenda Scheduled', 'Advising session added to today\'s schedule.', 'success');
   };
 
-  // Send chat message
+  // Send chat message (Strict Peer-to-Peer without automated AI bot intervention)
   const handleSendMessage = (text: string) => {
+    if (!userProfile) {
+      showToast('Authentication Required', 'You must be logged in to send advising messages.', 'warning');
+      return;
+    }
+
+    const isStudent = userProfile.role === 'student';
     const newMsg: ChatMessage = {
       id: `msg_${Date.now()}`,
-      sender: 'student',
+      sender: isStudent ? 'student' : 'adviser',
       senderName: userProfile.name,
       text,
       timestamp: 'Just now',
     };
+
     setChatMessages((prev) => [...prev, newMsg]);
 
-    setTimeout(() => {
-      let replyText =
-        'Thank you for reaching out Michael. I will review your record and confirm your request.';
-      if (text.toLowerCase().includes('cloud security') || text.toLowerCase().includes('csc418')) {
-        replyText =
-          'CSC418 Cloud Security is highly recommended! It aligns well with your Distributed Systems prerequisite and has a 94% pass rate.';
-      } else if (text.toLowerCase().includes('waiver') || text.toLowerCase().includes('unit')) {
-        replyText =
-          'Course unit waiver requests can be submitted directly through the HOD approval portal. You need a minimum 3.50 CGPA to qualify.';
-      } else if (text.toLowerCase().includes('project') || text.toLowerCase().includes('csc499')) {
-        replyText =
-          'For CSC499 Final Year Project, ensure your synopsis is signed by your supervisor before the Faculty Board deadline next month.';
-      }
-
-      const replyMsg: ChatMessage = {
-        id: `msg_rep_${Date.now()}`,
-        sender: 'adviser',
-        senderName: 'Dr. Sarah Jenkins',
-        text: replyText,
-        timestamp: 'Just now',
-      };
-      setChatMessages((prev) => [...prev, replyMsg]);
-    }, 900);
+    if (isStudent) {
+      showToast(
+        'Message Delivered',
+        "Your message is held for your Level Adviser's manual review and reply.",
+        'success'
+      );
+    } else {
+      showToast('Reply Sent', 'Your direct message has been delivered to the student.', 'success');
+    }
   };
 
   // Confirm booking
@@ -622,6 +615,7 @@ export function App() {
                 onAddAgendaItem={handleAddAgendaItem}
                 onNudgeStudent={handleNudgeStudent}
                 onNudgeAllMissing={handleNudgeAllMissing}
+                onOpenAdvisorChat={() => setIsAdvisorChatOpen(true)}
               />
             )}
 
@@ -668,7 +662,7 @@ export function App() {
       <AdvisorChatModal
         isOpen={isAdvisorChatOpen}
         onClose={() => setIsAdvisorChatOpen(false)}
-        studentName={userProfile.name}
+        currentUser={userProfile}
         messages={chatMessages}
         onSendMessage={handleSendMessage}
       />
