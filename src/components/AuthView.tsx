@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { OFFICIAL_LOGO_URL } from '../data/mockData';
 import { UserProfile, UserRole, LASU_DEPARTMENTS } from '../types';
+import { authenticateUser, registerNewUser, getRegisteredAccounts } from '../lib/authService';
 import confetti from 'canvas-confetti';
 
 interface AuthViewProps {
@@ -11,44 +12,103 @@ interface AuthViewProps {
 
 export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onToggleDark }) => {
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [role, setRole] = useState<UserRole>('student');
-  const [email, setEmail] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
+  const [selectedRoleTab, setSelectedRoleTab] = useState<UserRole>('student');
+  const [identifier, setIdentifier] = useState<string>('m.adebayo@lasu.edu.ng');
+  const [password, setPassword] = useState<string>('password123');
   const [name, setName] = useState<string>('');
-  const [matricNo, setMatricNo] = useState<string>('');
-  const [department, setDepartment] = useState<string>(LASU_DEPARTMENTS[0]);
+  const [matricOrStaffId, setMatricOrStaffId] = useState<string>('');
+  const [department, setDepartment] = useState<string>(LASU_DEPARTMENTS[4]); // Computer Science
   const [faculty, setFaculty] = useState<string>('Faculty of Computing & Information Technology');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [showDemoCredentials, setShowDemoCredentials] = useState<boolean>(false);
+
+  // Quick fill helper for testing registered institutional roles
+  const handleQuickFill = (role: UserRole) => {
+    setSelectedRoleTab(role);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    if (role === 'student') {
+      setIdentifier('m.adebayo@lasu.edu.ng');
+      setPassword('password123');
+    } else if (role === 'lecturer') {
+      setIdentifier('s.jenkins@lasu.edu.ng');
+      setPassword('password123');
+    } else if (role === 'hod') {
+      setIdentifier('j.miller@lasu.edu.ng');
+      setPassword('password123');
+    } else if (role === 'dean') {
+      setIdentifier('a.chen@lasu.edu.ng');
+      setPassword('password123');
+    }
+  };
+
+  const handleRoleTabClick = (role: UserRole) => {
+    setSelectedRoleTab(role);
+    setErrorMessage(null);
+    // update prefilled sample if using default values
+    if (identifier.endsWith('@lasu.edu.ng') || identifier.startsWith('CSC/') || identifier.startsWith('STAFF/')) {
+      handleQuickFill(role);
+    }
+  };
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setIsLoading(true);
 
     setTimeout(() => {
       setIsLoading(false);
-      // Construct fresh user profile from submitted credentials
-      const profileName = name.trim() || (email ? email.split('@')[0].replace('.', ' ').toUpperCase() : 'LASU User');
-      const profileEmail = email.trim() || `${role}@lasu.edu.ng`;
-      const profileMatric = matricNo.trim() || (role === 'student' ? 'CSC/2024/001' : undefined);
-      const profileStaff = role !== 'student' ? (matricNo.trim() || 'STAFF/CIT/001') : undefined;
+      // Strictly authenticate against registered users registry
+      const result = authenticateUser(identifier, password, selectedRoleTab);
 
-      const profile: UserProfile = {
-        id: `usr_${Date.now()}`,
-        name: profileName,
-        email: profileEmail,
-        role: role,
-        department: department,
-        faculty: faculty,
-        matricNo: profileMatric,
-        staffId: profileStaff,
-        avatarUrl:
-          role === 'student'
-            ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-            : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-        hasUploadedTranscript: false, // Fresh test user starts without uploaded transcript so user can test OCR / upload flow
-      };
+      if (!result.success || !result.profile) {
+        setErrorMessage(result.error || 'Access Denied: Unregistered user details.');
+        return;
+      }
 
+      try {
+        confetti({
+          particleCount: 45,
+          spread: 60,
+          origin: { y: 0.8 },
+        });
+      } catch (err) {
+        // ignore
+      }
+
+      onLoginSuccess(result.profile);
+    }, 450);
+  };
+
+  const handleSignupSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsLoading(true);
+
+    setTimeout(() => {
+      setIsLoading(false);
+      const result = registerNewUser({
+        name,
+        email: identifier,
+        password,
+        role: selectedRoleTab,
+        department,
+        faculty,
+        matricNo: selectedRoleTab === 'student' ? matricOrStaffId : undefined,
+        staffId: selectedRoleTab !== 'student' ? matricOrStaffId : undefined,
+      });
+
+      if (!result.success || !result.profile) {
+        setErrorMessage(result.error || 'Registration failed. Please check your submitted details.');
+        return;
+      }
+
+      setSuccessMessage('Account registered successfully! Signing you into your authorized portal...');
       try {
         confetti({
           particleCount: 50,
@@ -59,9 +119,15 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
         // ignore
       }
 
-      onLoginSuccess(profile);
-    }, 500);
+      setTimeout(() => {
+        if (result.profile) {
+          onLoginSuccess(result.profile);
+        }
+      }, 700);
+    }, 550);
   };
+
+  const registeredAccounts = getRegisteredAccounts();
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
@@ -99,20 +165,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
             {authMode === 'login'
-              ? 'Sign in to access your academic records & advising portal'
-              : 'Create your LASU Academic Enterprise account'}
+              ? 'Sign in to access your registered academic records & advising portal'
+              : 'Register your LASU Academic Account'}
           </p>
         </div>
 
         {/* Role Toggle Selector */}
-        <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl mb-6 border border-slate-200 dark:border-slate-700/60">
+        <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1 rounded-xl mb-4 border border-slate-200 dark:border-slate-700/60">
           {(['student', 'lecturer', 'hod', 'dean'] as UserRole[]).map((r) => (
             <button
               key={r}
               type="button"
-              onClick={() => setRole(r)}
+              onClick={() => handleRoleTabClick(r)}
               className={`flex-1 py-1.5 text-xs font-bold rounded-lg capitalize transition-all ${
-                role === r
+                selectedRoleTab === r
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs border border-slate-200 dark:border-slate-600'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
@@ -122,23 +188,56 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
           ))}
         </div>
 
+        {/* Error Notification Banner */}
+        {errorMessage && (
+          <div
+            id="auth-error-banner"
+            className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200"
+          >
+            <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0 mt-0.5">
+              error
+            </span>
+            <div className="leading-snug">
+              <span className="font-bold block mb-0.5">Access Denied</span>
+              {errorMessage}
+            </div>
+          </div>
+        )}
+
+        {/* Success Notification Banner */}
+        {successMessage && (
+          <div
+            id="auth-success-banner"
+            className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200"
+          >
+            <span className="material-symbols-outlined text-[18px] text-emerald-600 shrink-0 mt-0.5">
+              check_circle
+            </span>
+            <div className="leading-snug">{successMessage}</div>
+          </div>
+        )}
+
         {/* Login Form */}
         {authMode === 'login' && (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Email Address
+                Registered Email / Matric / Staff ID
               </label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[18px]">
-                  mail
+                  badge
                 </span>
                 <input
-                  type="email"
+                  id="login-identifier-input"
+                  type="text"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. yourname@gmail.com"
+                  value={identifier}
+                  onChange={(e) => {
+                    setIdentifier(e.target.value);
+                    setErrorMessage(null);
+                  }}
+                  placeholder="e.g. m.adebayo@lasu.edu.ng or CSC/21/0045"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2.5 pl-10 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 shadow-2xs"
                 />
               </div>
@@ -153,7 +252,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                   href="#forgot"
                   onClick={(e) => {
                     e.preventDefault();
-                    alert('Password reset instructions will be sent to your email address.');
+                    alert('Password reset link will be dispatched to your registered institutional email.');
                   }}
                   className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline"
                 >
@@ -165,11 +264,15 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                   lock
                 </span>
                 <input
+                  id="login-password-input"
                   type="password"
                   required
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setErrorMessage(null);
+                  }}
+                  placeholder="Enter your registered password"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2.5 pl-10 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 shadow-2xs"
                 />
               </div>
@@ -184,7 +287,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                   className="rounded bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
                 />
                 <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                  Remember on this device
+                  Remember verified credentials
                 </span>
               </label>
             </div>
@@ -199,7 +302,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                 <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>
               ) : (
                 <>
-                  <span>Sign In as {role.toUpperCase()}</span>
+                  <span>Sign In as {selectedRoleTab.toUpperCase()}</span>
                   <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                 </>
               )}
@@ -209,12 +312,13 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
 
         {/* Sign Up Mode */}
         {authMode === 'signup' && (
-          <form onSubmit={handleLoginSubmit} className="space-y-3">
+          <form onSubmit={handleSignupSubmit} className="space-y-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                 Full Name
               </label>
               <input
+                id="signup-name-input"
                 type="text"
                 required
                 value={name}
@@ -226,14 +330,15 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {role === 'student' ? 'Matric Number' : 'Staff ID'}
+                {selectedRoleTab === 'student' ? 'Matriculation Number' : 'Staff ID Number'}
               </label>
               <input
+                id="signup-id-input"
                 type="text"
                 required
-                value={matricNo}
-                onChange={(e) => setMatricNo(e.target.value)}
-                placeholder={role === 'student' ? 'e.g. CSC/21/0045' : 'e.g. STAFF/CSC/088'}
+                value={matricOrStaffId}
+                onChange={(e) => setMatricOrStaffId(e.target.value)}
+                placeholder={selectedRoleTab === 'student' ? 'e.g. CSC/21/0045' : 'e.g. STAFF/CSC/088'}
                 className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
               />
             </div>
@@ -266,34 +371,42 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                 Email Address
               </label>
               <input
+                id="signup-email-input"
                 type="email"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. yourname@gmail.com"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="e.g. yourname@lasu.edu.ng or gmail"
                 className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
               />
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Password
+                Create Password
               </label>
               <input
+                id="signup-password-input"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Create a secure password"
+                placeholder="Minimum 5 characters"
                 className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
               />
             </div>
 
             <button
+              id="submit-signup-btn"
               type="submit"
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-2 transition-all shadow-sm"
+              disabled={isLoading}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-2 transition-all shadow-sm flex items-center justify-center gap-2"
             >
-              Create Account
+              {isLoading ? (
+                <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>
+              ) : (
+                <span>Register &amp; Access Portal</span>
+              )}
             </button>
           </form>
         )}
@@ -302,19 +415,27 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
         <div className="mt-5 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
           {authMode === 'login' ? (
             <p>
-              Don&apos;t have an account?{' '}
+              Not yet registered?{' '}
               <button
-                onClick={() => setAuthMode('signup')}
+                type="button"
+                onClick={() => {
+                  setAuthMode('signup');
+                  setErrorMessage(null);
+                }}
                 className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
               >
-                Sign Up
+                Register New Account
               </button>
             </p>
           ) : (
             <p>
               Already registered?{' '}
               <button
-                onClick={() => setAuthMode('login')}
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setErrorMessage(null);
+                }}
                 className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
               >
                 Sign In
@@ -322,8 +443,60 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
             </p>
           )}
         </div>
+
+        {/* Registered Demo Credentials Helper Drawer */}
+        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={() => setShowDemoCredentials(!showDemoCredentials)}
+            className="w-full flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors py-1"
+          >
+            <span className="flex items-center gap-1.5 font-semibold">
+              <span className="material-symbols-outlined text-[15px] text-emerald-600">verified_user</span>
+              Pre-Registered Institutional Accounts
+            </span>
+            <span className="material-symbols-outlined text-[16px]">
+              {showDemoCredentials ? 'expand_less' : 'expand_more'}
+            </span>
+          </button>
+
+          {showDemoCredentials && (
+            <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-[11px] space-y-1.5 animate-in fade-in duration-200">
+              <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">
+                Click any account to populate verified credentials:
+              </p>
+              {registeredAccounts.slice(0, 4).map((acc) => (
+                <button
+                  key={acc.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedRoleTab(acc.role);
+                    setIdentifier(acc.email);
+                    setPassword(acc.password);
+                    setErrorMessage(null);
+                  }}
+                  className="w-full text-left p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex items-center justify-between group"
+                >
+                  <div>
+                    <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                      {acc.name}{' '}
+                      <span className="text-[9px] uppercase px-1.5 py-0.2 rounded font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ml-1">
+                        {acc.role}
+                      </span>
+                    </span>
+                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
+                      {acc.email} • Pass: {acc.password}
+                    </span>
+                  </div>
+                  <span className="material-symbols-outlined text-[16px] text-slate-400 group-hover:text-emerald-500">
+                    arrow_forward
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
-

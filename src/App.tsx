@@ -446,6 +446,13 @@ export function App() {
         onLoginSuccess={(profile) => {
           setUserProfile(profile);
           setUserRole(profile.role);
+          if (profile.role === 'student' || profile.role === 'lecturer') {
+            setCurrentTab('dashboard');
+          } else if (profile.role === 'hod') {
+            setCurrentTab('departmental');
+          } else if (profile.role === 'dean') {
+            setCurrentTab('executive');
+          }
           setIsAuthenticated(true);
         }}
       />
@@ -496,7 +503,6 @@ export function App() {
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
         userRole={userRole}
-        setUserRole={handleRoleChange}
         isOpenMobile={isMobileNavOpen}
         setIsOpenMobile={setIsMobileNavOpen}
       />
@@ -506,7 +512,6 @@ export function App() {
         userProfile={userProfile}
         setUserProfile={setUserProfile}
         userRole={userRole}
-        setUserRole={handleRoleChange}
         onOpenMobileNav={() => setIsMobileNavOpen(true)}
         searchQuery={globalSearchQuery}
         setSearchQuery={setGlobalSearchQuery}

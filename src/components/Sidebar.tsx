@@ -6,7 +6,6 @@ interface SidebarProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
   userRole: UserRole;
-  setUserRole: (role: UserRole) => void;
   isOpenMobile: boolean;
   setIsOpenMobile: (open: boolean) => void;
 }
@@ -15,15 +14,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   setCurrentTab,
   userRole,
-  setUserRole,
   isOpenMobile,
   setIsOpenMobile,
 }) => {
-  // Strict Role-Based Access Control for Navigation Items:
-  // - Student: Dashboard, Analytics, Settings (Cannot see Advising, Departmental, Executive)
-  // - Lecturer: Dashboard/Advising, Analytics, Settings (Cannot see Departmental, Executive)
-  // - HOD: Departmental Control, Advising, Analytics, Settings (Cannot see Executive)
-  // - Dean: Executive Overview, Departmental Control, Advising, Analytics, Settings
+  // Strict Role-Based Navigation Items for authenticated userRole:
+  // - Student: Academic Overview, Analytics & Projections, Settings & Security
+  // - Lecturer: Adviser Oversight, Cohort & Result Audit, Analytics & Projections, Settings & Security
+  // - HOD: Departmental Control, Cohort & Result Audit, Analytics & Projections, Settings & Security
+  // - Dean: Executive Overview, Departmental Control, Cohort & Result Audit, Analytics & Projections, Settings & Security
   const allNavItems = [
     {
       id: 'dashboard',
@@ -35,16 +33,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'departmental',
       label: 'Departmental Control',
       icon: 'admin_panel_settings',
-      badge: 'HOD',
-      badgeColor: 'bg-amber-50 text-amber-700 border-amber-200',
       roles: ['hod', 'dean'],
     },
     {
       id: 'executive',
       label: 'Executive Overview',
       icon: 'monitoring',
-      badge: 'DEAN',
-      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
       roles: ['dean'],
     },
     {
@@ -107,7 +101,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </h1>
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-widest">
-              Role:
+              Portal:
             </span>
             <span
               className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
@@ -154,94 +148,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {item.icon}
                 </span>
                 <span className="truncate">{item.label}</span>
-                {item.badge && (
-                  <span
-                    className={`ml-auto text-[10px] px-1.5 py-0.5 rounded border font-semibold ${item.badgeColor}`}
-                  >
-                    {item.badge}
-                  </span>
-                )}
               </button>
             );
           })}
         </div>
 
-        {/* Role Switcher Sandbox at bottom for demo and role testing */}
-        <div className="px-4 pt-4 border-t border-slate-100 dark:border-slate-800 mt-auto">
-          <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 uppercase font-semibold tracking-wider flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px] text-slate-400 dark:text-slate-500">lock</span>
-                Role Access Level
-              </span>
-              <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-bold capitalize">
-                {userRole}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 text-xs">
-              <button
-                id="role-btn-student"
-                onClick={() => {
-                  setUserRole('student');
-                  setCurrentTab('dashboard');
-                  setIsOpenMobile(false);
-                }}
-                className={`px-2 py-1.5 rounded-lg text-center font-medium transition-all ${
-                  userRole === 'student'
-                    ? 'bg-blue-600 text-white shadow-xs font-semibold'
-                    : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                🎓 Student
-              </button>
-              <button
-                id="role-btn-lecturer"
-                onClick={() => {
-                  setUserRole('lecturer');
-                  setCurrentTab('dashboard');
-                  setIsOpenMobile(false);
-                }}
-                className={`px-2 py-1.5 rounded-lg text-center font-medium transition-all ${
-                  userRole === 'lecturer'
-                    ? 'bg-amber-600 text-white shadow-xs font-semibold'
-                    : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                👨‍🏫 Lecturer
-              </button>
-              <button
-                id="role-btn-hod"
-                onClick={() => {
-                  setUserRole('hod');
-                  setCurrentTab('departmental');
-                  setIsOpenMobile(false);
-                }}
-                className={`px-2 py-1.5 rounded-lg text-center font-medium transition-all ${
-                  userRole === 'hod'
-                    ? 'bg-emerald-700 text-white shadow-xs font-semibold'
-                    : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                🏛️ HOD
-              </button>
-              <button
-                id="role-btn-dean"
-                onClick={() => {
-                  setUserRole('dean');
-                  setCurrentTab('executive');
-                  setIsOpenMobile(false);
-                }}
-                className={`px-2 py-1.5 rounded-lg text-center font-medium transition-all ${
-                  userRole === 'dean'
-                    ? 'bg-rose-600 text-white shadow-xs font-semibold'
-                    : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                👑 Dean
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-2 text-center">
-              Strict view barriers active per institutional hierarchy
+        {/* Institutional Authentication Footer Notice */}
+        <div className="px-5 pt-4 border-t border-slate-100 dark:border-slate-800 mt-auto">
+          <div className="flex items-center gap-2 py-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+              Authenticated Session Active
             </p>
           </div>
         </div>

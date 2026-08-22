@@ -5,7 +5,6 @@ interface HeaderProps {
   userProfile: UserProfile;
   setUserProfile: (profile: UserProfile) => void;
   userRole: UserRole;
-  setUserRole: (role: UserRole) => void;
   onOpenMobileNav: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -21,7 +20,6 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   userProfile,
   userRole,
-  setUserRole,
   onOpenMobileNav,
   searchQuery,
   setSearchQuery,
@@ -278,65 +276,6 @@ export const Header: React.FC<HeaderProps> = ({
                     </span>
                     Account Settings
                   </button>
-
-                  <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
-                  <p className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-semibold px-2 py-1">
-                    Role Hierarchy Switcher
-                  </p>
-                  <div className="grid grid-cols-2 gap-1 px-1">
-                    <button
-                      onClick={() => {
-                        setUserRole('student');
-                        setShowUserMenu(false);
-                      }}
-                      className={`text-[11px] p-1.5 rounded-md text-left font-medium transition-colors ${
-                        userRole === 'student'
-                          ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-semibold border border-blue-200 dark:border-blue-800'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      🎓 Student
-                    </button>
-                    <button
-                      onClick={() => {
-                        setUserRole('lecturer');
-                        setShowUserMenu(false);
-                      }}
-                      className={`text-[11px] p-1.5 rounded-md text-left font-medium transition-colors ${
-                        userRole === 'lecturer'
-                          ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-semibold border border-amber-200 dark:border-amber-800'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      👨‍🏫 Lecturer
-                    </button>
-                    <button
-                      onClick={() => {
-                        setUserRole('hod');
-                        setShowUserMenu(false);
-                      }}
-                      className={`text-[11px] p-1.5 rounded-md text-left font-medium transition-colors ${
-                        userRole === 'hod'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-800'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      🏛️ HOD
-                    </button>
-                    <button
-                      onClick={() => {
-                        setUserRole('dean');
-                        setShowUserMenu(false);
-                      }}
-                      className={`text-[11px] p-1.5 rounded-md text-left font-medium transition-colors ${
-                        userRole === 'dean'
-                          ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 font-semibold border border-rose-200 dark:border-rose-800'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
-                      }`}
-                    >
-                      👑 Dean
-                    </button>
-                  </div>
 
                   <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
 
