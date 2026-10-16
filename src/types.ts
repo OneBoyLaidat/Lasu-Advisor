@@ -1,5 +1,6 @@
 export type UserRole = 'student' | 'lecturer' | 'hod' | 'dean' | 'admin';
 export type ThemeMode = 'light' | 'dark' | 'system';
+export type EntryMode = 'utme' | 'direct_entry';
 
 export const LASU_DEPARTMENTS = [
   'Software Engineering',
@@ -21,12 +22,20 @@ export interface UserProfile {
   matricNo?: string;
   staffId?: string;
   session?: string;
+  admissionSession?: string;
+  entryMode?: EntryMode;
   level?: string;
   avatarUrl: string;
   phone?: string;
   hasUploadedTranscript?: boolean;
   transcriptUploadDate?: string;
   transcriptFileName?: string;
+  assignedAdviserId?: string;
+  assignedAdviserName?: string;
+  assignedAdviserEmail?: string;
+  assignedAdviserAvatar?: string;
+  assignedAdviserTitle?: string;
+  archivedChats?: ArchivedChatThread[];
 }
 
 export interface CourseResult {
@@ -64,6 +73,7 @@ export interface Adviser {
   email: string;
   avatarUrl: string;
   assignedLevel: string;
+  assignedSession?: string;
   studentLoad: number;
   maxLoad: number;
   status: 'Optimal' | 'Overloaded' | 'Available';
@@ -77,6 +87,10 @@ export interface Advisee {
   matricNo: string;
   department: string;
   level: string;
+  admissionSession?: string;
+  entryMode?: EntryMode;
+  assignedAdviserId?: string;
+  assignedAdviserName?: string;
   cgpa: number;
   status: 'Good Standing' | 'At Risk' | 'Average';
   carryovers: number;
@@ -151,9 +165,53 @@ export interface ChatMessage {
   id: string;
   sender: 'student' | 'adviser' | 'system';
   senderName: string;
+  senderRole?: string;
+  studentId?: string;
+  studentName?: string;
+  studentMatric?: string;
+  recipientName?: string;
+  adviserId?: string;
+  adviserName?: string;
   text: string;
   timestamp: string;
   isUrgent?: boolean;
+  isRead?: boolean;
+  isArchived?: boolean;
+  archivedNotice?: string;
+}
+
+export interface ArchivedChatThread {
+  id: string;
+  adviserId: string;
+  adviserName: string;
+  adviserTitle?: string;
+  adviserAvatar?: string;
+  archivedAt: string;
+  cohortLevel: string;
+  reason: string;
+  messages: ChatMessage[];
+}
+
+export interface StudentConversation {
+  id: string;
+  studentId: string;
+  studentName: string;
+  matricNo: string;
+  level: string;
+  admissionSession?: string;
+  entryMode?: EntryMode;
+  department: string;
+  avatarUrl: string;
+  cgpa: number;
+  status: 'Good Standing' | 'At Risk' | 'Average';
+  hasUploadedResult: boolean;
+  lastMessage: string;
+  lastMessageTime: string;
+  unreadCount: number;
+  messages: ChatMessage[];
+  archivedThreads?: ArchivedChatThread[];
+  currentAdviserId?: string;
+  currentAdviserName?: string;
 }
 
 export interface NotificationItem {

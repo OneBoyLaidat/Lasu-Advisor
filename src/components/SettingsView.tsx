@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { UserProfile, LASU_DEPARTMENTS, ThemeMode } from '../types';
-import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface SettingsViewProps {
   userProfile: UserProfile;
@@ -24,7 +23,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [phone, setPhone] = useState(userProfile.phone || '+234 803 456 7890');
   const [department, setDepartment] = useState(userProfile.department);
   const [emailAlerts, setEmailAlerts] = useState(true);
-  const [earlyWarningNotifs, setEarlyWarningNotifs] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
@@ -75,10 +73,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Database State:</span>
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Frontend Stack:</span>
+              <span className="font-semibold text-slate-800 dark:text-slate-200">React 19 (SPA)</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500 dark:text-slate-400 font-medium">Backend Stack:</span>
               <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
-                {isSupabaseConfigured ? 'Supabase Connected' : 'Local Persistence'}
+                Node.js (Express API)
               </span>
             </div>
           </div>
@@ -213,23 +215,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   type="checkbox"
                   checked={emailAlerts}
                   onChange={(e) => setEmailAlerts(e.target.checked)}
-                  className="rounded bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
-                />
-              </label>
-
-              <label className="flex items-center justify-between p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-slate-100/70 dark:hover:bg-slate-800 transition-colors">
-                <div>
-                  <span className="font-semibold text-slate-900 dark:text-slate-100 block">
-                    Early Warning System Triggers
-                  </span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                    Real-time alerts when CA test scores drop below NUC threshold.
-                  </span>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={earlyWarningNotifs}
-                  onChange={(e) => setEarlyWarningNotifs(e.target.checked)}
                   className="rounded bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
                 />
               </label>

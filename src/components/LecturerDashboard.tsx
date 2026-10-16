@@ -52,14 +52,14 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Page Header */}
+      {/* Page Header - Merged Academic Oversight & Result Audit */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
-            Student Oversight &amp; Advising
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+            Academic Oversight &amp; Result Audit
           </h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Level Adviser Dashboard • Level 300 Computer Science • Semester Result Audit
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+            Level Adviser Dashboard • Level 300 Computer Science • Session Result Audit &amp; Advisee Roster
           </p>
         </div>
 
@@ -88,96 +88,104 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
         </div>
       </div>
 
-      {/* Result Upload Compliance & Early Warning Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Card 1: Transcript Upload Compliance Tracker (Spans 7 cols) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 lg:col-span-7 flex flex-col justify-between shadow-xs">
-          <div>
-            <div className="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-[20px]">upload_file</span>
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                    Result &amp; Transcript Upload Compliance
-                  </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Audit of student OCR submissions for current academic session
-                  </p>
-                </div>
+      {/* Result Upload Compliance Tracker (Spans 12 cols) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+        <div>
+          <div className="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[20px]">upload_file</span>
               </div>
-
-              <span
-                className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
-                  complianceRate >= 70
-                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                    : 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                }`}
-              >
-                {complianceRate}% Compliance
-              </span>
-            </div>
-
-            {/* Compliance Progress Bar */}
-            <div className="space-y-2 mt-3">
-              <div className="flex justify-between text-xs font-medium">
-                <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  {uploadedCount} Uploaded &amp; OCR Scanned
-                </span>
-                <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" />
-                  {missingAdvisees.length} Pending / Missing
-                </span>
-              </div>
-              <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
-                <div
-                  className="h-full bg-emerald-600 transition-all duration-500"
-                  style={{ width: `${complianceRate}%` }}
-                />
-                <div
-                  className="h-full bg-amber-400 transition-all duration-500"
-                  style={{ width: `${100 - complianceRate}%` }}
-                />
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  Result &amp; Transcript Upload Compliance
+                </h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Audit of student OCR submissions for current academic session
+                </p>
               </div>
             </div>
+
+            <span
+              className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${
+                complianceRate >= 70
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+              }`}
+            >
+              {complianceRate}% Compliance
+            </span>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setComplianceTab('all')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                  complianceTab === 'all'
-                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
-              >
-                All Advisees ({advisees.length})
-              </button>
-              <button
-                onClick={() => setComplianceTab('uploaded')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                  complianceTab === 'uploaded'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
-                }`}
-              >
-                Uploaded ({uploadedCount})
-              </button>
-              <button
-                onClick={() => setComplianceTab('missing')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                  complianceTab === 'missing'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
-                }`}
-              >
-                Missing ({missingAdvisees.length})
-              </button>
+          {/* Compliance Progress Bar */}
+          <div className="space-y-2 mt-3">
+            <div className="flex justify-between text-xs font-medium">
+              <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                {uploadedCount} Uploaded &amp; OCR Scanned
+              </span>
+              <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-amber-500" />
+                {missingAdvisees.length} Pending / Missing
+              </span>
             </div>
+            <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden flex">
+              <div
+                className="h-full bg-emerald-600 transition-all duration-500"
+                style={{ width: `${complianceRate}%` }}
+              />
+              <div
+                className="h-full bg-amber-400 transition-all duration-500"
+                style={{ width: `${100 - complianceRate}%` }}
+              />
+            </div>
+          </div>
+        </div>
 
+        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setComplianceTab('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                complianceTab === 'all'
+                  ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+            >
+              All Advisees ({advisees.length})
+            </button>
+            <button
+              onClick={() => setComplianceTab('uploaded')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                complianceTab === 'uploaded'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+              }`}
+            >
+              Uploaded ({uploadedCount})
+            </button>
+            <button
+              onClick={() => setComplianceTab('missing')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                complianceTab === 'missing'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+              }`}
+            >
+              Missing ({missingAdvisees.length})
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {strugglingStudents.length > 0 && (
+              <button
+                onClick={() => onOpenEmailModal(strugglingStudents.map((s) => s.name))}
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-2xs"
+              >
+                <span className="material-symbols-outlined text-[14px]">mail</span>
+                Contact Students ({strugglingStudents.length})
+              </button>
+            )}
             {missingAdvisees.length > 0 && (
               <button
                 onClick={() => onNudgeAllMissing(missingAdvisees.length)}
@@ -187,42 +195,6 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
                 Nudge All Missing Students
               </button>
             )}
-          </div>
-        </div>
-
-        {/* Card 2: Early Warning Banner (Spans 5 cols) */}
-        <div className="bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/80 rounded-xl p-5 lg:col-span-5 flex flex-col justify-between shadow-xs">
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-[22px]">warning</span>
-                <h3 className="text-sm font-bold text-amber-950 dark:text-amber-200">Early Warning System</h3>
-              </div>
-              <span className="bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">
-                {strugglingStudents.length} At-Risk
-              </span>
-            </div>
-            <p className="text-xs text-amber-900/80 dark:text-amber-300/80 leading-relaxed">
-              Students flagged with CGPA &lt; 2.50 or carryover deficiencies. Scheduled intervention
-              recommended prior to end-of-semester board review.
-            </p>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-amber-200/60 dark:border-amber-800/60 flex items-center gap-2">
-            <button
-              onClick={() => onOpenEmailModal(strugglingStudents.map((s) => s.name))}
-              className="flex-1 bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-800 text-xs font-semibold text-amber-950 dark:text-amber-200 py-1.5 px-3 rounded-lg hover:bg-amber-100/50 transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
-            >
-              <span className="material-symbols-outlined text-[14px]">mail</span>
-              Email At-Risk
-            </button>
-            <button
-              onClick={() => onOpenIntervention()}
-              className="flex-1 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-xs"
-            >
-              <span className="material-symbols-outlined text-[14px]">calendar_month</span>
-              Intervene
-            </button>
           </div>
         </div>
       </div>
@@ -312,93 +284,8 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
         </div>
       </div>
 
-      {/* Middle Row: Today's Agenda & Advisee Roster with Result Tracking */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-        {/* Agenda Widget (Spans 4 cols on lg) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 col-span-1 lg:col-span-4 flex flex-col min-h-[420px] shadow-xs">
-          <div className="flex justify-between items-center mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
-            <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-[18px]">event</span>
-              Today&apos;s Agenda
-            </h4>
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">Oct 24, 2024</span>
-          </div>
-
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-            {agendaItems.map((item) => (
-              <div
-                key={item.id}
-                className={`border rounded-lg p-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/60 transition-colors ${
-                  item.isUrgent
-                    ? 'border-l-4 border-l-amber-500 border-slate-200 dark:border-slate-800 bg-amber-50/30 dark:bg-amber-950/20'
-                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60'
-                }`}
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <h5 className="text-xs font-bold text-slate-900 dark:text-slate-100">{item.title}</h5>
-                  <span
-                    className={`text-[10px] font-mono px-2 py-0.5 rounded font-semibold ${
-                      item.isUrgent
-                        ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                        : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                    }`}
-                  >
-                    {item.time}
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-600 dark:text-slate-400 mb-2 leading-relaxed">{item.description}</p>
-
-                <div className="flex justify-between items-center pt-2 border-t border-slate-100 dark:border-slate-800">
-                  <div className="flex -space-x-1.5 items-center">
-                    {item.studentAvatar ? (
-                      <img
-                        src={item.studentAvatar}
-                        alt="student"
-                        className="w-6 h-6 rounded-full border border-slate-200 dark:border-slate-700 object-cover"
-                      />
-                    ) : (
-                      item.attendees.map((att, idx) => (
-                        <div
-                          key={idx}
-                          className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 border border-white dark:border-slate-700 flex items-center justify-center text-[9px] text-slate-700 dark:text-slate-300 font-bold"
-                        >
-                          {att}
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <label className="flex items-center gap-1.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={item.reminder}
-                      onChange={() => onToggleAgendaReminder(item.id)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-7 h-3.5 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600 relative" />
-                    <span className="text-[10px] uppercase font-semibold text-slate-500 dark:text-slate-400 peer-checked:text-emerald-700 dark:peer-checked:text-emerald-400">
-                      Reminder
-                    </span>
-                  </label>
-                </div>
-              </div>
-            ))}
-
-            {/* Quick Add Agenda Button */}
-            <button
-              id="add-agenda-btn"
-              onClick={onAddAgendaItem}
-              className="w-full border border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-2.5 flex items-center justify-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-semibold"
-            >
-              <span className="material-symbols-outlined text-[16px] text-emerald-600 dark:text-emerald-400">add_circle</span>
-              Schedule Advising Session
-            </button>
-          </div>
-        </div>
-
-        {/* Advisee Roster with Result Upload Status & Nudge Action (Spans 8 cols on lg) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 col-span-1 lg:col-span-8 flex flex-col min-h-[420px] shadow-xs">
+      {/* Advisee Roster with Result Upload Status & Nudge Action (Full Width) */}
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col min-h-[420px] shadow-xs">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
             <div>
               <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -573,7 +460,6 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
             </table>
           </div>
         </div>
-      </div>
 
       {/* Bottom Table: Struggling Students Intervention */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col shadow-xs">

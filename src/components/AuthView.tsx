@@ -1,35 +1,86 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { OFFICIAL_LOGO_URL } from '../data/mockData';
-import { UserProfile, UserRole, LASU_DEPARTMENTS } from '../types';
+import { UserProfile, LASU_DEPARTMENTS, EntryMode } from '../types';
 import { authenticateUser, registerNewUser, getRegisteredAccounts } from '../lib/authService';
+import {
+  computeAcademicLevel,
+  STANDARD_ACADEMIC_SESSIONS,
+  getCurrentAcademicSession,
+  getStudentCohortSession,
+} from '../lib/academicUtils';
 import confetti from 'canvas-confetti';
+
+export type AuthPageMode = 'login' | 'register-select' | 'register-student' | 'register-staff';
 
 interface AuthViewProps {
   onLoginSuccess: (profile: UserProfile) => void;
   isDark?: boolean;
   onToggleDark?: () => void;
+  initialPage?: AuthPageMode;
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onToggleDark }) => {
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
-  const [signupCategory, setSignupCategory] = useState<'student' | 'staff'>('student');
+export const AuthView: React.FC<AuthViewProps> = ({
+  onLoginSuccess,
+  isDark,
+  onToggleDark,
+  initialPage = 'login',
+}) => {
+  // Page mode state (synchronized with URL hash for dedicated page navigation)
+  const [currentPage, setCurrentPage] = useState<AuthPageMode>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase().replace('#', '');
+      if (hash === 'register' || hash === 'create-account') return 'register-select';
+      if (hash === 'register-student' || hash === 'student-signup') return 'register-student';
+      if (hash === 'register-staff' || hash === 'staff-signup') return 'register-staff';
+      if (hash === 'login' || hash === 'signin') return 'login';
+    }
+    return initialPage;
+  });
 
-  // Unified Login fields (strictly empty by default)
+  // Navigate to a dedicated page and sync hash
+  const navigateTo = (page: AuthPageMode) => {
+    setCurrentPage(page);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    if (typeof window !== 'undefined') {
+      window.location.hash = page === 'login' ? 'login' : page;
+    }
+  };
+
+  // Listen for browser back/forward buttons
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.toLowerCase().replace('#', '');
+      if (hash === 'register' || hash === 'create-account') setCurrentPage('register-select');
+      else if (hash === 'register-student' || hash === 'student-signup') setCurrentPage('register-student');
+      else if (hash === 'register-staff' || hash === 'staff-signup') setCurrentPage('register-staff');
+      else if (hash === 'login' || hash === 'signin' || !hash) setCurrentPage('login');
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // Unified Login fields
   const [identifier, setIdentifier] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [rememberMe, setRememberMe] = useState<boolean>(true);
 
-  // Registration fields
+  // Student Registration fields
   const [fullName, setFullName] = useState<string>('');
   const [matricNumber, setMatricNumber] = useState<string>('');
-  const [staffId, setStaffId] = useState<string>('');
+  const [entryMode, setEntryMode] = useState<EntryMode>('utme');
+  const [admissionSession, setAdmissionSession] = useState<string>(STANDARD_ACADEMIC_SESSIONS[0] || '2026/2027');
   const [studentLevel, setStudentLevel] = useState<string>('100 Level');
+
+  // Staff Registration fields
+  const [staffName, setStaffName] = useState<string>('');
+  const [staffId, setStaffId] = useState<string>('');
   const [staffRole, setStaffRole] = useState<'lecturer' | 'hod' | 'dean'>('lecturer');
-  const [department, setDepartment] = useState<string>(LASU_DEPARTMENTS[4]); // Computer Science
+  const [department, setDepartment] = useState<string>(LASU_DEPARTMENTS[4] || 'Computer Science');
   const [faculty, setFaculty] = useState<string>('Faculty of Computing & Information Technology');
   const [signupEmail, setSignupEmail] = useState<string>('');
   const [signupPassword, setSignupPassword] = useState<string>('');
-  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
 
   // Status & Feedback
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -37,7 +88,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showDemoCredentials, setShowDemoCredentials] = useState<boolean>(false);
 
-  // 1. Unified Login Submission
+  // Auto-recalculate Academic Level whenever entryMode or admissionSession updates
+  useEffect(() => {
+    const computed = computeAcademicLevel(admissionSession, entryMode);
+    setStudentLevel(computed.level);
+  }, [admissionSession, entryMode]);
+
+  const handleEntryModeChange = (mode: EntryMode) => {
+    setEntryMode(mode);
+  };
+
+  const handleAdmissionSessionChange = (sess: string) => {
+    setAdmissionSession(sess);
+  };
+
+  // 1. Unified Login Handler
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -46,7 +111,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
 
     setTimeout(() => {
       setIsLoading(false);
-      // Strictly authenticate against registered users database without requiring role preselection
       const result = authenticateUser(identifier, password);
 
       if (!result.success || !result.profile) {
@@ -65,10 +129,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
       }
 
       onLoginSuccess(result.profile);
-    }, 450);
+    }, 400);
   };
 
-  // 2. Student Registration Submission
+  // 2. Student Registration Handler (Without Results/Transcript Upload Requirement)
   const handleStudentSignupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -86,8 +150,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
         faculty,
         matricNo: matricNumber,
         level: studentLevel,
-        hasUploadedTranscript: !!uploadedFileName,
-        transcriptFileName: uploadedFileName || undefined,
+        admissionSession: admissionSession,
+        entryMode: entryMode,
       });
 
       if (!result.success || !result.profile) {
@@ -95,7 +159,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
         return;
       }
 
-      setSuccessMessage('Student account registered successfully! Redirecting to student dashboard...');
+      setSuccessMessage('Student account registered successfully! Entering student dashboard...');
       try {
         confetti({
           particleCount: 50,
@@ -111,10 +175,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
           onLoginSuccess(result.profile);
         }
       }, 700);
-    }, 550);
+    }, 450);
   };
 
-  // 3. Staff Registration Submission
+  // 3. Staff Registration Handler
   const handleStaffSignupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -124,7 +188,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
     setTimeout(() => {
       setIsLoading(false);
       const result = registerNewUser({
-        name: fullName,
+        name: staffName,
         email: signupEmail,
         password: signupPassword,
         role: staffRole,
@@ -154,22 +218,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
           onLoginSuccess(result.profile);
         }
       }, 700);
-    }, 550);
-  };
-
-  // File upload simulator handler
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadedFileName(file.name);
-      setErrorMessage(null);
-    }
+    }, 450);
   };
 
   const registeredAccounts = getRegisteredAccounts();
+  const currentAcademicSession = getCurrentAcademicSession();
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
+    <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
       {/* Top right theme toggle button */}
       {onToggleDark && (
         <button
@@ -188,64 +244,65 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
       <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-emerald-100/40 dark:bg-emerald-950/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-slate-200/40 dark:bg-slate-900/40 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Main Authentication Card */}
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
-        {/* LASU Crest & Title */}
-        <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-16 h-16 rounded-full overflow-hidden mb-3 border border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50 dark:bg-slate-800 p-1 flex items-center justify-center">
-            <img
-              src={OFFICIAL_LOGO_URL}
-              alt="LASU Advisor"
-              className="w-full h-full object-contain rounded-full"
-            />
-          </div>
-          <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-            LASU Advisor
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
-            {authMode === 'login'
-              ? 'Sign in to access your registered academic & advising portal'
-              : 'Create your verified LASU Academic Account'}
-          </p>
-        </div>
-
-        {/* Error Notification Banner */}
-        {errorMessage && (
-          <div
-            id="auth-error-banner"
-            className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200"
-          >
-            <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0 mt-0.5">
-              error
-            </span>
-            <div className="leading-snug">
-              <span className="font-bold block mb-0.5">Access Denied</span>
-              {errorMessage}
+      {/* ========================================================================= */}
+      {/* PAGE 1: DEDICATED UNIFIED LOGIN PAGE                                      */}
+      {/* ========================================================================= */}
+      {currentPage === 'login' && (
+        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
+          {/* Header */}
+          <div className="flex flex-col items-center text-center mb-6">
+            <div className="w-16 h-16 rounded-full overflow-hidden mb-3 border border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50 dark:bg-slate-800 p-1 flex items-center justify-center">
+              <img
+                src={OFFICIAL_LOGO_URL}
+                alt="LASU Advisor Logo"
+                className="w-full h-full object-contain rounded-full"
+              />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+              LASU Advisor
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+              Academic Advising &amp; CGPA Audit Portal
+            </p>
+            <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Active Session: {currentAcademicSession}
             </div>
           </div>
-        )}
 
-        {/* Success Notification Banner */}
-        {successMessage && (
-          <div
-            id="auth-success-banner"
-            className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200"
-          >
-            <span className="material-symbols-outlined text-[18px] text-emerald-600 shrink-0 mt-0.5">
-              check_circle
-            </span>
-            <div className="leading-snug">{successMessage}</div>
-          </div>
-        )}
+          {/* Feedback Banners */}
+          {errorMessage && (
+            <div
+              id="auth-error-banner"
+              className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200"
+            >
+              <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0 mt-0.5">
+                error
+              </span>
+              <div className="leading-snug">
+                <span className="font-bold block mb-0.5">Authentication Error</span>
+                {errorMessage}
+              </div>
+            </div>
+          )}
 
-        {/* ========================================================= */}
-        {/* 1. UNIFIED LOGIN FORM (NO ROLE TABS)                     */}
-        {/* ========================================================= */}
-        {authMode === 'login' && (
+          {successMessage && (
+            <div
+              id="auth-success-banner"
+              className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200"
+            >
+              <span className="material-symbols-outlined text-[18px] text-emerald-600 shrink-0 mt-0.5">
+                check_circle
+              </span>
+              <div className="leading-snug">{successMessage}</div>
+            </div>
+          )}
+
+          {/* Sign In Form */}
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Email / Matric / Staff ID
+                Institutional Identifier
               </label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[18px]">
@@ -260,7 +317,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
                     setIdentifier(e.target.value);
                     setErrorMessage(null);
                   }}
-                  placeholder="Enter email, Matric No, or Staff ID"
+                  placeholder="Email, Matric No, or Staff ID"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2.5 pl-10 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 shadow-2xs"
                 />
               </div>
@@ -331,450 +388,721 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, isDark, onTo
               )}
             </button>
           </form>
-        )}
 
-        {/* ========================================================= */}
-        {/* 2. DUAL-PATH REGISTRATION FLOW                            */}
-        {/* ========================================================= */}
-        {authMode === 'signup' && (
-          <div className="space-y-4">
-            {/* Choose Registration Path Selector */}
+          {/* Dedicated Navigation Link to Create Account Portal */}
+          <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              New to LASU Advisor?{' '}
+              <a
+                href="#register"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('register-select');
+                }}
+                className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
+              >
+                Create an Account →
+              </a>
+            </p>
+
+            <div className="mt-3 flex items-center justify-center gap-3 text-[11px] text-slate-400 dark:text-slate-500">
+              <a
+                href="#register-student"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('register-student');
+                }}
+                className="hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-[14px]">school</span>
+                Student Registration
+              </a>
+              <span>•</span>
+              <a
+                href="#register-staff"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('register-staff');
+                }}
+                className="hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-[14px]">badge</span>
+                Staff Registration
+              </a>
+            </div>
+          </div>
+
+          {/* Registered Accounts Helper Drawer */}
+          <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setShowDemoCredentials(!showDemoCredentials)}
+              className="w-full flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors py-1 cursor-pointer"
+            >
+              <span className="flex items-center gap-1.5 font-semibold">
+                <span className="material-symbols-outlined text-[15px] text-emerald-600">verified_user</span>
+                Pre-Registered Institutional Accounts
+              </span>
+              <span className="material-symbols-outlined text-[16px]">
+                {showDemoCredentials ? 'expand_less' : 'expand_more'}
+              </span>
+            </button>
+
+            {showDemoCredentials && (
+              <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-[11px] space-y-1.5 animate-in fade-in duration-200">
+                <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">
+                  Click any account to populate verified credentials:
+                </p>
+                {registeredAccounts.slice(0, 5).map((acc) => (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => {
+                      setIdentifier(acc.email);
+                      setPassword(acc.password);
+                      setErrorMessage(null);
+                    }}
+                    className="w-full text-left p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex items-center justify-between group cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                        {acc.name}{' '}
+                        <span className="text-[9px] uppercase px-1.5 py-0.2 rounded font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ml-1">
+                          {acc.role === 'lecturer' ? 'Lecturer / Adviser' : acc.role}
+                        </span>
+                      </span>
+                      <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
+                        {acc.email} • Pass: {acc.password}
+                      </span>
+                    </div>
+                    <span className="material-symbols-outlined text-[16px] text-slate-400 group-hover:text-emerald-500">
+                      arrow_forward
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* PAGE 2: DEDICATED ACCOUNT REGISTRATION PORTAL SELECTION PAGE               */}
+      {/* ========================================================================= */}
+      {currentPage === 'register-select' && (
+        <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
+          {/* Header */}
+          <div className="flex flex-col items-center text-center mb-6">
+            <div className="w-14 h-14 rounded-full overflow-hidden mb-3 border border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50 dark:bg-slate-800 p-1 flex items-center justify-center">
+              <img
+                src={OFFICIAL_LOGO_URL}
+                alt="LASU Logo"
+                className="w-full h-full object-contain rounded-full"
+              />
+            </div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+              Create New Account
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md">
+              Select your institutional portal category to continue to your dedicated registration page.
+            </p>
+          </div>
+
+          {/* Registration Category Cards with Direct Links */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-6">
+            {/* Student Portal Card */}
+            <div className="p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex flex-col justify-between group">
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 flex items-center justify-center mb-3">
+                  <span className="material-symbols-outlined text-[28px]">school</span>
+                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">
+                  Student Registration
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+                  For undergraduate students (UTME and Direct Entry). Dynamic cohort progression and level adviser assignment.
+                </p>
+              </div>
+              <div className="mt-5 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <a
+                  href="#register-student"
+                  id="link-to-student-registration"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigateTo('register-student');
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs"
+                >
+                  <span>Proceed to Student Registration</span>
+                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Staff & Faculty Portal Card */}
+            <div className="p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex flex-col justify-between group">
+              <div>
+                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 flex items-center justify-center mb-3">
+                  <span className="material-symbols-outlined text-[28px]">badge</span>
+                </div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  Staff &amp; Faculty Registration
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+                  For Lecturers (Level Advisers), Heads of Department (HODs), and Deans of Faculty.
+                </p>
+              </div>
+              <div className="mt-5 pt-3 border-t border-slate-200 dark:border-slate-700">
+                <a
+                  href="#register-staff"
+                  id="link-to-staff-registration"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigateTo('register-staff');
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold transition-all shadow-xs"
+                >
+                  <span>Proceed to Staff Registration</span>
+                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Return to Login link */}
+          <div className="text-center pt-3 border-t border-slate-100 dark:border-slate-800">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Already have an account?{' '}
+              <a
+                href="#login"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('login');
+                }}
+                className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline inline-flex items-center gap-1"
+              >
+                <span>Sign in to your portal</span>
+                <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+              </a>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* PAGE 3: DEDICATED STUDENT REGISTRATION PAGE                                */}
+      {/* ========================================================================= */}
+      {currentPage === 'register-student' && (
+        <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
+          {/* Breadcrumb Navigation */}
+          <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800 text-xs">
+            <a
+              href="#register"
+              onClick={(e) => {
+                e.preventDefault();
+                navigateTo('register-select');
+              }}
+              className="text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium inline-flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+              Back to Portal Selection
+            </a>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              Student Registration
+            </span>
+          </div>
+
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center border border-emerald-200 dark:border-emerald-800 shrink-0">
+              <span className="material-symbols-outlined text-[24px]">school</span>
+            </div>
             <div>
-              <label className="block text-[11px] uppercase font-bold text-slate-500 dark:text-slate-400 tracking-wider mb-2 text-center">
-                Select Registration Type
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+                Student Account Registration
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Create your verified LASU student profile for advising &amp; CGPA tracking
+              </p>
+            </div>
+          </div>
+
+          {/* Feedback Banners */}
+          {errorMessage && (
+            <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
+              <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0 mt-0.5">
+                error
+              </span>
+              <div className="leading-snug">{errorMessage}</div>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
+              <span className="material-symbols-outlined text-[18px] text-emerald-600 shrink-0 mt-0.5">
+                check_circle
+              </span>
+              <div className="leading-snug">{successMessage}</div>
+            </div>
+          )}
+
+          {/* Registration Form (Strictly without result/transcript upload field) */}
+          <form onSubmit={handleStudentSignupSubmit} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Full Name
+              </label>
+              <input
+                id="student-name-input"
+                type="text"
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="e.g. Babatunde Fashola"
+                className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
+              />
+            </div>
+
+            {/* Mode of Entry: Are you a Direct Entry (DE) Student? */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Are you a Direct Entry (DE) Student?
               </label>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  id="signup-student-category-btn"
-                  onClick={() => {
-                    setSignupCategory('student');
-                    setErrorMessage(null);
-                  }}
-                  className={`py-2.5 px-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                    signupCategory === 'student'
-                      ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-600 text-emerald-800 dark:text-emerald-300 font-bold shadow-xs'
-                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  onClick={() => handleEntryModeChange('utme')}
+                  className={`p-2.5 rounded-xl border text-left flex items-center gap-2 cursor-pointer transition-all ${
+                    entryMode === 'utme'
+                      ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-bold'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-[22px]">school</span>
-                  <span className="text-xs">Student</span>
+                  <span className="material-symbols-outlined text-[18px] text-emerald-600">
+                    {entryMode === 'utme' ? 'radio_button_checked' : 'radio_button_unchecked'}
+                  </span>
+                  <div>
+                    <p className="text-xs leading-none">No (UTME Entry)</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Standard entry at 100 Level</p>
+                  </div>
                 </button>
 
                 <button
                   type="button"
-                  id="signup-staff-category-btn"
-                  onClick={() => {
-                    setSignupCategory('staff');
-                    setErrorMessage(null);
-                  }}
-                  className={`py-2.5 px-3 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
-                    signupCategory === 'staff'
-                      ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-600 text-emerald-800 dark:text-emerald-300 font-bold shadow-xs'
-                      : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  onClick={() => handleEntryModeChange('direct_entry')}
+                  className={`p-2.5 rounded-xl border text-left flex items-center gap-2 cursor-pointer transition-all ${
+                    entryMode === 'direct_entry'
+                      ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200 font-bold'
+                      : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <span className="material-symbols-outlined text-[22px]">badge</span>
-                  <span className="text-xs">Staff</span>
+                  <span className="material-symbols-outlined text-[18px] text-emerald-600">
+                    {entryMode === 'direct_entry' ? 'radio_button_checked' : 'radio_button_unchecked'}
+                  </span>
+                  <div>
+                    <p className="text-xs leading-none">Yes (Direct Entry - DE)</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Starts at 200 Level</p>
+                  </div>
                 </button>
               </div>
             </div>
 
-            {/* --------------------------------------------------------- */}
-            {/* 3. STUDENT REGISTRATION FORM                             */}
-            {/* --------------------------------------------------------- */}
-            {signupCategory === 'student' && (
-              <form onSubmit={handleStudentSignupSubmit} className="space-y-3 pt-1">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Full Name
-                  </label>
-                  <input
-                    id="student-name-input"
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Enter full name (e.g. Babatunde Fashola)"
-                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                  />
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Matriculation Number
+                </label>
+                <input
+                  id="student-matric-input"
+                  type="text"
+                  required
+                  value={matricNumber}
+                  onChange={(e) => setMatricNumber(e.target.value)}
+                  placeholder="e.g. CSC/21/0045"
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
+                />
+              </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Matriculation Number
-                    </label>
-                    <input
-                      id="student-matric-input"
-                      type="text"
-                      required
-                      value={matricNumber}
-                      onChange={(e) => setMatricNumber(e.target.value)}
-                      placeholder="e.g. CSC/21/0045"
-                      className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Academic Level
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="student-level-select"
-                        value={studentLevel}
-                        onChange={(e) => setStudentLevel(e.target.value)}
-                        className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs appearance-none cursor-pointer"
-                      >
-                        <option value="100 Level">100 Level</option>
-                        <option value="200 Level">200 Level</option>
-                        <option value="300 Level">300 Level</option>
-                        <option value="400 Level">400 Level</option>
-                        <option value="500 Level">500 Level</option>
-                      </select>
-                      <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-[18px]">
-                        expand_more
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Department
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="student-department-select"
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs appearance-none cursor-pointer"
-                    >
-                      {LASU_DEPARTMENTS.map((dept) => (
-                        <option key={dept} value={dept} className="dark:bg-slate-800">
-                          {dept}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-[18px]">
-                      expand_more
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Email Address
-                  </label>
-                  <input
-                    id="student-email-input"
-                    type="email"
-                    required
-                    value={signupEmail}
-                    onChange={(e) => setSignupEmail(e.target.value)}
-                    placeholder="Enter email address"
-                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Password
-                  </label>
-                  <input
-                    id="student-password-input"
-                    type="password"
-                    required
-                    value={signupPassword}
-                    onChange={(e) => setSignupPassword(e.target.value)}
-                    placeholder="Enter password (min. 5 characters)"
-                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                  />
-                </div>
-
-                {/* Results Upload Section */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Official Results / Transcript Slip (Optional)
-                  </label>
-                  <label
-                    htmlFor="student-transcript-file"
-                    className="flex flex-col items-center justify-center p-3 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-all cursor-pointer"
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Admission Year / Session
+                </label>
+                <div className="relative">
+                  <select
+                    id="student-session-select"
+                    value={admissionSession}
+                    onChange={(e) => handleAdmissionSessionChange(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs appearance-none cursor-pointer"
                   >
-                    <input
-                      id="student-transcript-file"
-                      type="file"
-                      accept=".pdf,.png,.jpg,.jpeg"
-                      onChange={handleFileUpload}
-                      className="hidden"
-                    />
-                    {uploadedFileName ? (
-                      <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                        <span className="material-symbols-outlined text-[20px]">task</span>
-                        <span className="truncate max-w-[200px]">{uploadedFileName}</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            setUploadedFileName(null);
-                          }}
-                          className="text-slate-400 hover:text-rose-500 ml-1"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">close</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                        <span className="material-symbols-outlined text-[20px] text-slate-400">upload_file</span>
-                        <span>Click or drop portal result slip (PDF or image)</span>
-                      </div>
-                    )}
-                  </label>
+                    {STANDARD_ACADEMIC_SESSIONS.map((sess) => (
+                      <option key={sess} value={sess} className="dark:bg-slate-800">
+                        {sess} Session
+                      </option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[18px]">
+                    expand_more
+                  </span>
                 </div>
+              </div>
+            </div>
 
-                <button
-                  id="submit-student-signup-btn"
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-2 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  {isLoading ? (
-                    <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>
-                  ) : (
-                    <span>Complete Student Registration</span>
-                  )}
-                </button>
-              </form>
-            )}
-
-            {/* --------------------------------------------------------- */}
-            {/* 4. STAFF REGISTRATION FORM                               */}
-            {/* --------------------------------------------------------- */}
-            {signupCategory === 'staff' && (
-              <form onSubmit={handleStaffSignupSubmit} className="space-y-3 pt-1">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Full Name & Title
-                  </label>
-                  <input
-                    id="staff-name-input"
-                    type="text"
-                    required
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Enter full name (e.g. Dr. Sarah Jenkins)"
-                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Staff ID Number
-                    </label>
-                    <input
-                      id="staff-id-input"
-                      type="text"
-                      required
-                      value={staffId}
-                      onChange={(e) => setStaffId(e.target.value)}
-                      placeholder="e.g. STAFF/CSC/088"
-                      className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Position / Role
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="staff-role-select"
-                        value={staffRole}
-                        onChange={(e) => setStaffRole(e.target.value as 'lecturer' | 'hod' | 'dean')}
-                        className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs appearance-none cursor-pointer"
-                      >
-                        <option value="lecturer">Lecturer (Level Adviser)</option>
-                        <option value="hod">Head of Department (HOD)</option>
-                        <option value="dean">Dean of Faculty</option>
-                      </select>
-                      <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-[18px]">
-                        expand_more
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Department
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="staff-department-select"
-                      value={department}
-                      onChange={(e) => setDepartment(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs appearance-none cursor-pointer"
-                    >
-                      {LASU_DEPARTMENTS.map((dept) => (
-                        <option key={dept} value={dept} className="dark:bg-slate-800">
-                          {dept}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-[18px]">
-                      expand_more
+            {/* Dynamic Academic Level & Assigned Cohort Set Preview */}
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400">Assigned Cohort / Set:</span>
+                <span className="font-bold text-emerald-700 dark:text-emerald-400 font-mono">
+                  {getStudentCohortSession(admissionSession, entryMode)} Cohort
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400">Current Academic Level:</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-slate-900 dark:text-slate-100 text-xs">
+                    {studentLevel}
+                  </span>
+                  {entryMode === 'direct_entry' && (
+                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold px-1.5 py-0.2 rounded border border-emerald-300 dark:border-emerald-800">
+                      Direct Entry
                     </span>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Institutional Email Address
-                  </label>
-                  <input
-                    id="staff-email-input"
-                    type="email"
-                    required
-                    value={signupEmail}
-                    onChange={(e) => setSignupEmail(e.target.value)}
-                    placeholder="e.g. s.jenkins@lasu.edu.ng"
-                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Create Password
-                  </label>
-                  <input
-                    id="staff-password-input"
-                    type="password"
-                    required
-                    value={signupPassword}
-                    onChange={(e) => setSignupPassword(e.target.value)}
-                    placeholder="Enter password (min. 5 characters)"
-                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                  />
-                </div>
-
-                <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
-                  <span className="material-symbols-outlined text-[16px] text-amber-500 shrink-0 mt-0.5">
-                    verified_user
-                  </span>
-                  <span>
-                    Staff account permissions are strictly bound to your registered position ({staffRole.toUpperCase()}) upon authentication.
-                  </span>
-                </div>
-
-                <button
-                  id="submit-staff-signup-btn"
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-2 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  {isLoading ? (
-                    <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>
-                  ) : (
-                    <span>Complete Staff Registration</span>
                   )}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-700">
+                {entryMode === 'direct_entry'
+                  ? `Direct Entry students admitted in ${admissionSession} join the existing ${getStudentCohortSession(admissionSession, entryMode)} cohort/set at 200 Level.`
+                  : `UTME students admitted in ${admissionSession} are assigned to the ${admissionSession} cohort starting at 100 Level.`}
+              </p>
+            </div>
 
-        {/* Switch Between Login & Registration Modes */}
-        <div className="mt-5 text-center text-xs text-slate-500 dark:text-slate-400 font-medium">
-          {authMode === 'login' ? (
-            <p>
-              Not yet registered?{' '}
-              <button
-                type="button"
-                id="switch-to-signup-btn"
-                onClick={() => {
-                  setAuthMode('signup');
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Department
+              </label>
+              <div className="relative">
+                <select
+                  id="student-department-select"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs appearance-none cursor-pointer"
+                >
+                  {LASU_DEPARTMENTS.map((dept) => (
+                    <option key={dept} value={dept} className="dark:bg-slate-800">
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+                <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[18px]">
+                  expand_more
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Email Address
+                </label>
+                <input
+                  id="student-email-input"
+                  type="email"
+                  required
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  placeholder="student@lasu.edu.ng"
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Password
+                </label>
+                <input
+                  id="student-password-input"
+                  type="password"
+                  required
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  placeholder="Min. 5 characters"
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
+                />
+              </div>
+            </div>
+
+            <button
+              id="submit-student-signup-btn"
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-3 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isLoading ? (
+                <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>
+              ) : (
+                <>
+                  <span>Complete Student Registration</span>
+                  <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Navigation Links */}
+          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
+            <div>
+              Already have an account?{' '}
+              <a
+                href="#login"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('login');
                 }}
-                className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
-              >
-                Register New Account
-              </button>
-            </p>
-          ) : (
-            <p>
-              Already registered?{' '}
-              <button
-                type="button"
-                id="switch-to-login-btn"
-                onClick={() => {
-                  setAuthMode('login');
-                  setErrorMessage(null);
-                  setSuccessMessage(null);
-                }}
-                className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
+                className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
               >
                 Sign In
-              </button>
-            </p>
-          )}
+              </a>
+            </div>
+            <div>
+              Staff member?{' '}
+              <a
+                href="#register-staff"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('register-staff');
+                }}
+                className="text-slate-700 dark:text-slate-300 font-semibold hover:underline"
+              >
+                Staff Registration →
+              </a>
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* Registered Demo Credentials Helper Drawer */}
-        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={() => setShowDemoCredentials(!showDemoCredentials)}
-            className="w-full flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors py-1 cursor-pointer"
-          >
-            <span className="flex items-center gap-1.5 font-semibold">
-              <span className="material-symbols-outlined text-[15px] text-emerald-600">verified_user</span>
-              Pre-Registered Institutional Accounts
+      {/* ========================================================================= */}
+      {/* PAGE 4: DEDICATED STAFF & FACULTY REGISTRATION PAGE                       */}
+      {/* ========================================================================= */}
+      {currentPage === 'register-staff' && (
+        <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
+          {/* Breadcrumb Navigation */}
+          <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800 text-xs">
+            <a
+              href="#register"
+              onClick={(e) => {
+                e.preventDefault();
+                navigateTo('register-select');
+              }}
+              className="text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-medium inline-flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+              Back to Portal Selection
+            </a>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              Staff Registration
             </span>
-            <span className="material-symbols-outlined text-[16px]">
-              {showDemoCredentials ? 'expand_less' : 'expand_more'}
-            </span>
-          </button>
+          </div>
 
-          {showDemoCredentials && (
-            <div className="mt-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 text-[11px] space-y-1.5 animate-in fade-in duration-200">
-              <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">
-                Click any account to populate verified credentials:
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center border border-blue-200 dark:border-blue-800 shrink-0">
+              <span className="material-symbols-outlined text-[24px]">badge</span>
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+                Academic Staff Registration
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Register as Level Adviser, Head of Department, or Dean of Faculty
               </p>
-              {registeredAccounts.slice(0, 4).map((acc) => (
-                <button
-                  key={acc.id}
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('login');
-                    setIdentifier(acc.email);
-                    setPassword(acc.password);
-                    setErrorMessage(null);
-                  }}
-                  className="w-full text-left p-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex items-center justify-between group cursor-pointer"
-                >
-                  <div>
-                    <span className="font-bold text-slate-800 dark:text-slate-200 block">
-                      {acc.name}{' '}
-                      <span className="text-[9px] uppercase px-1.5 py-0.2 rounded font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ml-1">
-                        {acc.role === 'lecturer' ? 'Lecturer / Adviser' : acc.role}
-                      </span>
-                    </span>
-                    <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
-                      {acc.email} • Pass: {acc.password}
-                    </span>
-                  </div>
-                  <span className="material-symbols-outlined text-[16px] text-slate-400 group-hover:text-emerald-500">
-                    arrow_forward
-                  </span>
-                </button>
-              ))}
+            </div>
+          </div>
+
+          {/* Feedback Banners */}
+          {errorMessage && (
+            <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
+              <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0 mt-0.5">
+                error
+              </span>
+              <div className="leading-snug">{errorMessage}</div>
             </div>
           )}
+
+          {successMessage && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
+              <span className="material-symbols-outlined text-[18px] text-emerald-600 shrink-0 mt-0.5">
+                check_circle
+              </span>
+              <div className="leading-snug">{successMessage}</div>
+            </div>
+          )}
+
+          {/* Staff Form */}
+          <form onSubmit={handleStaffSignupSubmit} className="space-y-3.5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Full Name &amp; Academic Title
+              </label>
+              <input
+                id="staff-name-input"
+                type="text"
+                required
+                value={staffName}
+                onChange={(e) => setStaffName(e.target.value)}
+                placeholder="e.g. Dr. Sarah Jenkins"
+                className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 shadow-2xs"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Staff ID Number
+                </label>
+                <input
+                  id="staff-id-input"
+                  type="text"
+                  required
+                  value={staffId}
+                  onChange={(e) => setStaffId(e.target.value)}
+                  placeholder="e.g. STAFF/CSC/088"
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 shadow-2xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Institutional Position / Role
+                </label>
+                <div className="relative">
+                  <select
+                    id="staff-role-select"
+                    value={staffRole}
+                    onChange={(e) => setStaffRole(e.target.value as 'lecturer' | 'hod' | 'dean')}
+                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-600 shadow-2xs appearance-none cursor-pointer"
+                  >
+                    <option value="lecturer">Lecturer (Level Adviser)</option>
+                    <option value="hod">Head of Department (HOD)</option>
+                    <option value="dean">Dean of Faculty</option>
+                  </select>
+                  <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[18px]">
+                    expand_more
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Department
+              </label>
+              <div className="relative">
+                <select
+                  id="staff-department-select"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-600 shadow-2xs appearance-none cursor-pointer"
+                >
+                  {LASU_DEPARTMENTS.map((dept) => (
+                    <option key={dept} value={dept} className="dark:bg-slate-800">
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+                <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[18px]">
+                  expand_more
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Institutional Email Address
+                </label>
+                <input
+                  id="staff-email-input"
+                  type="email"
+                  required
+                  value={signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
+                  placeholder="s.jenkins@lasu.edu.ng"
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 shadow-2xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  Create Password
+                </label>
+                <input
+                  id="staff-password-input"
+                  type="password"
+                  required
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                  placeholder="Min. 5 characters"
+                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 shadow-2xs"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
+              <span className="material-symbols-outlined text-[16px] text-amber-500 shrink-0 mt-0.5">
+                verified_user
+              </span>
+              <span>
+                Staff permissions and advising rosters will be configured according to your chosen role (<strong>{staffRole.toUpperCase()}</strong>).
+              </span>
+            </div>
+
+            <button
+              id="submit-staff-signup-btn"
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-3 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isLoading ? (
+                <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>
+              ) : (
+                <>
+                  <span>Complete Staff Registration</span>
+                  <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* Navigation Links */}
+          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
+            <div>
+              Already have an account?{' '}
+              <a
+                href="#login"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('login');
+                }}
+                className="text-blue-600 dark:text-blue-400 font-bold hover:underline"
+              >
+                Sign In
+              </a>
+            </div>
+            <div>
+              Are you a student?{' '}
+              <a
+                href="#register-student"
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigateTo('register-student');
+                }}
+                className="text-slate-700 dark:text-slate-300 font-semibold hover:underline"
+              >
+                Student Registration →
+              </a>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
