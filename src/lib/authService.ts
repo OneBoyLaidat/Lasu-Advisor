@@ -1,4 +1,5 @@
-import { UserProfile, UserRole } from '../types';
+import { UserProfile, UserRole, EntryMode } from '../types';
+import { getStudentCohortSession } from './academicUtils';
 import {
   STUDENT_AVATAR,
   ADVISER_AVATAR,
@@ -18,12 +19,20 @@ export interface RegisteredAccount {
   matricNo?: string;
   staffId?: string;
   level?: string;
+  session?: string;
+  admissionSession?: string;
+  entryMode?: EntryMode;
+  assignedAdviserId?: string;
+  assignedAdviserName?: string;
+  assignedAdviserEmail?: string;
+  assignedAdviserAvatar?: string;
+  assignedAdviserTitle?: string;
   avatarUrl: string;
   phone?: string;
   hasUploadedTranscript?: boolean;
 }
 
-const STORAGE_KEY = 'lasu_registered_accounts_v1';
+const STORAGE_KEY = 'lasu_registered_accounts_v2';
 
 // Seed authentic registered accounts for all LASU faculties, staff, and students
 const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
@@ -37,6 +46,13 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
     faculty: 'Computing & Information Technology',
     matricNo: 'CSC/21/0045',
     level: '300 Level',
+    admissionSession: '2021/2022',
+    entryMode: 'utme',
+    assignedAdviserId: 'adv_sarah',
+    assignedAdviserName: 'Dr. Sarah Jenkins',
+    assignedAdviserEmail: 's.jenkins@lasu.edu.ng',
+    assignedAdviserAvatar: ADVISER_AVATAR,
+    assignedAdviserTitle: 'Assoc. Prof, Computer Science',
     avatarUrl: STUDENT_AVATAR,
     phone: '+234 803 456 7890',
     hasUploadedTranscript: true,
@@ -76,7 +92,7 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
     staffId: 'DEAN/CIT/001',
     avatarUrl: DEAN_AVATAR,
   },
-  // Additional registered advisees
+  // Additional registered advisees with Direct Entry and UTME profiles
   {
     id: 'usr_student_02',
     name: 'David Okafor',
@@ -87,6 +103,12 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
     faculty: 'Computing & Information Technology',
     matricNo: 'CSC/21/0082',
     level: '300 Level',
+    admissionSession: '2021/2022',
+    entryMode: 'utme',
+    assignedAdviserId: 'adv_sarah',
+    assignedAdviserName: 'Dr. Sarah Jenkins',
+    assignedAdviserEmail: 's.jenkins@lasu.edu.ng',
+    assignedAdviserAvatar: ADVISER_AVATAR,
     avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80',
     hasUploadedTranscript: true,
   },
@@ -98,8 +120,14 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
     role: 'student',
     department: 'Computer Science',
     faculty: 'Computing & Information Technology',
-    matricNo: 'CSC/21/0014',
+    matricNo: 'CSC/22/0114',
     level: '300 Level',
+    admissionSession: '2022/2023',
+    entryMode: 'direct_entry', // DE admitted in 2022/2023 starts at 200L, reaches 300L in 2023/24
+    assignedAdviserId: 'adv_sarah',
+    assignedAdviserName: 'Dr. Sarah Jenkins',
+    assignedAdviserEmail: 's.jenkins@lasu.edu.ng',
+    assignedAdviserAvatar: ADVISER_AVATAR,
     avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
     hasUploadedTranscript: true,
   },
@@ -130,6 +158,57 @@ export function saveRegisteredAccounts(accounts: RegisteredAccount[]): void {
   } catch (e) {
     console.error('Failed to save registered accounts', e);
   }
+}
+
+/**
+ * Propagates a newly assigned adviser to all registered student accounts in that session or level.
+ */
+export function propagateAdviserAssignmentToStoredAccounts(
+  targetLevelOrSession: string,
+  newAdviser: { id: string; name: string; email: string; avatarUrl: string; title?: string }
+): number {
+  const accounts = getRegisteredAccounts();
+  let updatedCount = 0;
+
+  const updated = accounts.map((acc) => {
+    if (acc.role !== 'student') return acc;
+
+    const matchesLevel = acc.level && acc.level.toLowerCase().includes(targetLevelOrSession.toLowerCase());
+    const matchesSession = acc.admissionSession && acc.admissionSession.toLowerCase().includes(targetLevelOrSession.toLowerCase());
+
+    if (matchesLevel || matchesSession) {
+      updatedCount++;
+      return {
+        ...acc,
+        assignedAdviserId: newAdviser.id,
+        assignedAdviserName: newAdviser.name,
+        assignedAdviserEmail: newAdviser.email,
+        assignedAdviserAvatar: newAdviser.avatarUrl,
+        assignedAdviserTitle: newAdviser.title || 'Academic Level Adviser',
+      };
+    }
+    return acc;
+  });
+
+  if (updatedCount > 0) {
+    saveRegisteredAccounts(updated);
+    // Background notification to Node.js backend
+    if (typeof window !== 'undefined') {
+      fetch('/api/advisers/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adviserId: newAdviser.id,
+          level: targetLevelOrSession,
+          session: targetLevelOrSession,
+          studentLoad: updatedCount,
+        }),
+      }).catch(() => {
+        // Fallback gracefully to client-side persistence
+      });
+    }
+  }
+  return updatedCount;
 }
 
 export interface AuthResult {
@@ -185,7 +264,6 @@ export function authenticateUser(
     };
   }
 
-  // If role filter was selected on login tabs, verify or note match
   const finalRole = matched.role;
 
   const profile: UserProfile = {
@@ -198,6 +276,13 @@ export function authenticateUser(
     matricNo: matched.matricNo,
     staffId: matched.staffId,
     level: matched.level,
+    admissionSession: matched.admissionSession,
+    entryMode: matched.entryMode,
+    assignedAdviserId: matched.assignedAdviserId,
+    assignedAdviserName: matched.assignedAdviserName,
+    assignedAdviserEmail: matched.assignedAdviserEmail,
+    assignedAdviserAvatar: matched.assignedAdviserAvatar,
+    assignedAdviserTitle: matched.assignedAdviserTitle,
     avatarUrl: matched.avatarUrl,
     phone: matched.phone,
     hasUploadedTranscript: matched.hasUploadedTranscript ?? false,
@@ -219,6 +304,12 @@ export function registerNewUser(data: {
   matricNo?: string;
   staffId?: string;
   level?: string;
+  admissionSession?: string;
+  entryMode?: EntryMode;
+  assignedAdviserId?: string;
+  assignedAdviserName?: string;
+  assignedAdviserEmail?: string;
+  assignedAdviserAvatar?: string;
   hasUploadedTranscript?: boolean;
   transcriptFileName?: string;
 }): AuthResult {
@@ -263,6 +354,11 @@ export function registerNewUser(data: {
     };
   }
 
+  const computedCohortSession =
+    data.role === 'student'
+      ? getStudentCohortSession(data.admissionSession || '2024/2025', data.entryMode || 'utme')
+      : undefined;
+
   const newAccount: RegisteredAccount = {
     id: `usr_${Date.now()}`,
     name: cleanName,
@@ -274,6 +370,14 @@ export function registerNewUser(data: {
     matricNo: data.role === 'student' ? cleanId : undefined,
     staffId: data.role !== 'student' ? cleanId : undefined,
     level: data.role === 'student' ? (data.level || '100 Level') : undefined,
+    session: computedCohortSession,
+    admissionSession: data.admissionSession || '2024/2025',
+    entryMode: data.entryMode || 'utme',
+    assignedAdviserId: data.assignedAdviserId || 'adv_sarah',
+    assignedAdviserName: data.assignedAdviserName || 'Dr. Sarah Jenkins',
+    assignedAdviserEmail: data.assignedAdviserEmail || 's.jenkins@lasu.edu.ng',
+    assignedAdviserAvatar: data.assignedAdviserAvatar || ADVISER_AVATAR,
+    assignedAdviserTitle: 'Assoc. Prof, Level Adviser',
     avatarUrl:
       data.role === 'student'
         ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
@@ -288,6 +392,28 @@ export function registerNewUser(data: {
   accounts.unshift(newAccount);
   saveRegisteredAccounts(accounts);
 
+  // Background registration to Node.js backend
+  if (typeof window !== 'undefined') {
+    fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        role: newAccount.role,
+        name: newAccount.name,
+        email: newAccount.email,
+        matricNo: newAccount.matricNo,
+        staffId: newAccount.staffId,
+        department: newAccount.department,
+        faculty: newAccount.faculty,
+        level: newAccount.level,
+        admissionSession: newAccount.admissionSession,
+        entryMode: newAccount.entryMode,
+      }),
+    }).catch(() => {
+      // Fallback gracefully
+    });
+  }
+
   const profile: UserProfile = {
     id: newAccount.id,
     name: newAccount.name,
@@ -298,6 +424,14 @@ export function registerNewUser(data: {
     matricNo: newAccount.matricNo,
     staffId: newAccount.staffId,
     level: newAccount.level,
+    session: newAccount.session,
+    admissionSession: newAccount.admissionSession,
+    entryMode: newAccount.entryMode,
+    assignedAdviserId: newAccount.assignedAdviserId,
+    assignedAdviserName: newAccount.assignedAdviserName,
+    assignedAdviserEmail: newAccount.assignedAdviserEmail,
+    assignedAdviserAvatar: newAccount.assignedAdviserAvatar,
+    assignedAdviserTitle: newAccount.assignedAdviserTitle,
     avatarUrl: newAccount.avatarUrl,
     hasUploadedTranscript: newAccount.hasUploadedTranscript ?? false,
     transcriptFileName: data.transcriptFileName,

@@ -10,6 +10,8 @@ import {
   CourseSuccessRate,
   Appointment,
   ChatMessage,
+  StudentConversation,
+  ArchivedChatThread,
   NotificationItem,
   ThemeMode,
 } from './types';
@@ -22,6 +24,7 @@ import {
   AGENDA_ITEMS,
   COURSE_SUCCESS_RATES,
   INITIAL_CHAT_MESSAGES,
+  INITIAL_CONVERSATIONS,
   INITIAL_APPOINTMENTS,
 } from './data/mockData';
 
@@ -30,14 +33,16 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { StudentDashboard } from './components/StudentDashboard';
 import { LecturerDashboard } from './components/LecturerDashboard';
+import { AdviserMessagingView } from './components/AdviserMessagingView';
+import { StudentMessagingView } from './components/StudentMessagingView';
 import { DepartmentalControl } from './components/DepartmentalControl';
 import { ExecutiveOverview } from './components/ExecutiveOverview';
 import { AnalyticsView } from './components/AnalyticsView';
 import { AuthView } from './components/AuthView';
 import { SettingsView } from './components/SettingsView';
+import { propagateAdviserAssignmentToStoredAccounts } from './lib/authService';
 
 // Modal imports
-import { AdvisorChatModal } from './components/AdvisorChatModal';
 import { BookAppointmentModal } from './components/BookAppointmentModal';
 import { InterventionModal } from './components/InterventionModal';
 import { AssignAdvisorModal } from './components/AssignAdvisorModal';
@@ -114,6 +119,8 @@ export function App() {
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(AGENDA_ITEMS);
   const [courseRates, setCourseRates] = useState<CourseSuccessRate[]>(COURSE_SUCCESS_RATES);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
+  const [conversations, setConversations] = useState<StudentConversation[]>(INITIAL_CONVERSATIONS);
+  const [activeConversationId, setActiveConversationId] = useState<string>('conv_michael');
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>([
     {
@@ -126,7 +133,7 @@ export function App() {
     },
     {
       id: 'n2',
-      title: 'Early Warning Audit Alert',
+      title: 'Academic Performance Audit Alert',
       desc: '3 students flagged for academic performance review in Computer Science.',
       time: '1h ago',
       urgent: true,
@@ -143,7 +150,6 @@ export function App() {
   ]);
 
   // Modal Control States
-  const [isAdvisorChatOpen, setIsAdvisorChatOpen] = useState(false);
   const [isBookAppointmentOpen, setIsBookAppointmentOpen] = useState(false);
   const [isInterventionOpen, setIsInterventionOpen] = useState(false);
   const [interventionTargetStudent, setInterventionTargetStudent] = useState<string>('');
@@ -171,16 +177,16 @@ export function App() {
   // - dean: full access
   const isTabAllowedForRole = (tab: string, role: UserRole): boolean => {
     if (role === 'student') {
-      return ['dashboard', 'analytics', 'settings'].includes(tab);
+      return ['dashboard', 'messages', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'lecturer') {
-      return ['dashboard', 'advising', 'analytics', 'settings'].includes(tab);
+      return ['dashboard', 'messages', 'advising', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'hod') {
-      return ['dashboard', 'departmental', 'advising', 'analytics', 'settings'].includes(tab);
+      return ['dashboard', 'messages', 'departmental', 'advising', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'dean') {
-      return ['dashboard', 'executive', 'departmental', 'advising', 'analytics', 'settings'].includes(tab);
+      return ['dashboard', 'messages', 'executive', 'departmental', 'advising', 'analytics', 'settings'].includes(tab);
     }
     return true;
   };
@@ -319,21 +325,87 @@ export function App() {
       id: `msg_${Date.now()}`,
       sender: isStudent ? 'student' : 'adviser',
       senderName: userProfile.name,
+      senderRole: isStudent ? 'Student' : 'Level Adviser',
+      studentName: isStudent ? userProfile.name : undefined,
+      studentMatric: isStudent ? userProfile.matricNo : undefined,
       text,
       timestamp: 'Just now',
     };
 
     setChatMessages((prev) => [...prev, newMsg]);
 
+    // Also synchronize with the adviser's conversation inbox for Michael Adebayo or matching student
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === 'conv_michael' || c.studentName === userProfile.name) {
+          return {
+            ...c,
+            lastMessage: text,
+            lastMessageTime: 'Just now',
+            unreadCount: isStudent ? (c.unreadCount || 0) + 1 : c.unreadCount,
+            messages: [...c.messages, newMsg],
+          };
+        }
+        return c;
+      })
+    );
+
     if (isStudent) {
       showToast(
         'Message Delivered',
-        "Your message is held for your Level Adviser's manual review and reply.",
+        "Your message is held securely for your Level Adviser's manual review and reply.",
         'success'
       );
     } else {
       showToast('Reply Sent', 'Your direct message has been delivered to the student.', 'success');
     }
+  };
+
+  // Adviser sends manual peer-to-peer reply to student
+  const handleAdviserReply = (conversationId: string, replyText: string) => {
+    if (!userProfile) {
+      showToast('Authentication Required', 'You must be logged in to send replies.', 'warning');
+      return;
+    }
+
+    const replyMsg: ChatMessage = {
+      id: `msg_reply_${Date.now()}`,
+      sender: 'adviser',
+      senderName: userProfile.name || 'Dr. Sarah Jenkins',
+      senderRole: 'Level Adviser',
+      text: replyText,
+      timestamp: 'Just now',
+    };
+
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id === conversationId) {
+          return {
+            ...c,
+            lastMessage: replyText,
+            lastMessageTime: 'Just now',
+            unreadCount: 0,
+            messages: [...c.messages, replyMsg],
+          };
+        }
+        return c;
+      })
+    );
+
+    // If replying to Michael Adebayo's conversation, sync with chatMessages for student modal view
+    if (conversationId === 'conv_michael') {
+      setChatMessages((prev) => [...prev, replyMsg]);
+    }
+
+    showToast('Reply Dispatched', 'Manual response delivered directly to student inbox.', 'success');
+  };
+
+  // Select conversation and mark unread as read
+  const handleSelectConversation = (id: string) => {
+    setActiveConversationId(id);
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
+    );
   };
 
   // Confirm booking
@@ -342,26 +414,152 @@ export function App() {
     showToast('Appointment Booked', `Session confirmed with ${appointment.adviserName} on ${appointment.date}.`, 'success');
   };
 
-  // Save Adviser Assignment
-  const handleSaveAdvisorAssignment = (advId: string, level: string, load: number) => {
+  // Save Adviser Assignment with global propagation and message archiving per session
+  const handleSaveAdvisorAssignment = (
+    advId: string,
+    level: string,
+    session: string = '2025/2026',
+    notes?: string
+  ) => {
+    const targetAdv = advisers.find((a) => a.id === advId);
+    if (!targetAdv) return;
+
+    // 1. Update advisers state (per session assignment)
     setAdvisers((prev) =>
       prev.map((adv) =>
         adv.id === advId
           ? {
               ...adv,
               assignedLevel: level,
-              studentLoad: load,
-              status:
-                load > adv.maxLoad
-                  ? 'Overloaded'
-                  : load > adv.maxLoad * 0.8
-                  ? 'Optimal'
-                  : 'Available',
+              assignedSession: session,
+              status: 'Optimal',
             }
           : adv
       )
     );
-    showToast('Advisor Assigned', `Advisor load updated to ${load} students (${level}).`, 'success');
+
+    // 2. Propagate to persistent storage accounts for all students in session/level
+    const propagatedCount = propagateAdviserAssignmentToStoredAccounts(session || level, {
+      id: targetAdv.id,
+      name: targetAdv.name,
+      email: targetAdv.email,
+      avatarUrl: targetAdv.avatarUrl,
+      title: targetAdv.title,
+    });
+
+    // 3. Update advisees roster in state
+    setAdvisees((prev) =>
+      prev.map((a) => {
+        const matchesSession = a.admissionSession && a.admissionSession.toLowerCase().includes(session.toLowerCase());
+        const matchesLevel = a.level && a.level.toLowerCase().includes(level.toLowerCase());
+        if (matchesSession || matchesLevel) {
+          return {
+            ...a,
+            assignedAdviserId: targetAdv.id,
+            assignedAdviserName: targetAdv.name,
+          };
+        }
+        return a;
+      })
+    );
+
+    // 4. If current logged-in user is a student in this cohort, archive previous chat and switch adviser
+    const isMatchingStudent =
+      userProfile.role === 'student' &&
+      ((userProfile.admissionSession && userProfile.admissionSession.toLowerCase().includes(session.toLowerCase())) ||
+        (userProfile.level && userProfile.level.toLowerCase().includes(level.toLowerCase())));
+
+    if (isMatchingStudent && userProfile.assignedAdviserId !== targetAdv.id) {
+      const prevAdviserName = userProfile.assignedAdviserName || 'Dr. Sarah Jenkins';
+      const prevAdviserId = userProfile.assignedAdviserId || 'adv_sarah';
+
+      // Create archive record if there are previous messages
+      if (chatMessages.length > 0) {
+        const newArchive: ArchivedChatThread = {
+          id: `arch_${Date.now()}`,
+          adviserId: prevAdviserId,
+          adviserName: prevAdviserName,
+          adviserTitle: userProfile.assignedAdviserTitle,
+          adviserAvatar: userProfile.assignedAdviserAvatar,
+          archivedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          cohortLevel: `${userProfile.level || level} (${session})`,
+          reason: notes || 'Administrative level adviser reallocation by Academic Board.',
+          messages: [...chatMessages],
+        };
+
+        setUserProfile((prev) => ({
+          ...prev,
+          assignedAdviserId: targetAdv.id,
+          assignedAdviserName: targetAdv.name,
+          assignedAdviserEmail: targetAdv.email,
+          assignedAdviserAvatar: targetAdv.avatarUrl,
+          assignedAdviserTitle: targetAdv.title,
+          archivedChats: [...(prev.archivedChats || []), newArchive],
+        }));
+
+        // Reset active chat stream with welcome institutional notice from new adviser
+        const systemNotice: ChatMessage = {
+          id: `sys_alloc_${Date.now()}`,
+          sender: 'system',
+          senderName: 'LASU Academic Board',
+          text: `Level Adviser Reallocation: ${targetAdv.name} (${targetAdv.title}) is now your designated Level Adviser for the ${session} cohort. Your past chat history with ${prevAdviserName} has been archived safely.`,
+          timestamp: 'Just now',
+        };
+        setChatMessages([systemNotice]);
+      } else {
+        setUserProfile((prev) => ({
+          ...prev,
+          assignedAdviserId: targetAdv.id,
+          assignedAdviserName: targetAdv.name,
+          assignedAdviserEmail: targetAdv.email,
+          assignedAdviserAvatar: targetAdv.avatarUrl,
+          assignedAdviserTitle: targetAdv.title,
+        }));
+      }
+    }
+
+    // 5. Update conversation records for Adviser inbox
+    setConversations((prev) =>
+      prev.map((c) => {
+        const matchesSession = c.admissionSession && c.admissionSession.toLowerCase().includes(session.toLowerCase());
+        const matchesLevel = c.level && c.level.toLowerCase().includes(level.toLowerCase());
+        if (matchesSession || matchesLevel) {
+          const archiveThread: ArchivedChatThread = {
+            id: `arch_conv_${Date.now()}_${c.id}`,
+            adviserId: c.currentAdviserId || 'adv_sarah',
+            adviserName: c.currentAdviserName || 'Dr. Sarah Jenkins',
+            archivedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+            cohortLevel: `${c.level} (${session})`,
+            reason: notes || 'Administrative adviser reallocation',
+            messages: [...c.messages],
+          };
+          return {
+            ...c,
+            currentAdviserId: targetAdv.id,
+            currentAdviserName: targetAdv.name,
+            archivedThreads: [...(c.archivedThreads || []), archiveThread],
+          };
+        }
+        return c;
+      })
+    );
+
+    // 6. Notification & Toast
+    const newNotice: NotificationItem = {
+      id: `adv_assign_${Date.now()}`,
+      title: 'Adviser Reassignment Propagated',
+      desc: `${targetAdv.name} assigned to ${level} (${session} Session). Propagated to student records.`,
+      time: 'Just now',
+      urgent: false,
+      type: 'system',
+    };
+    setNotifications((prev) => [newNotice, ...prev]);
+
+    showToast(
+      'Adviser Reassigned & Propagated Globally',
+      `${targetAdv.name} is now the assigned Level Adviser for ${session} (${level}). ${propagatedCount} student profile(s) updated.`,
+      'success'
+    );
   };
 
   // OCR Transcript Parsed handler: Populates student results and synchronizes with Adviser roster!
@@ -498,6 +696,7 @@ export function App() {
         userRole={userRole}
         isOpenMobile={isMobileNavOpen}
         setIsOpenMobile={setIsMobileNavOpen}
+        unreadMessagesCount={conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0)}
       />
 
       {/* Top Header Bar */}
@@ -547,14 +746,22 @@ export function App() {
                     studentProfile={userProfile}
                     stats={studentStats}
                     courseResults={courseResults}
-                    onOpenAdvisorChat={() => setIsAdvisorChatOpen(true)}
+                    onOpenAdvisorChat={() => setCurrentTab('messages')}
                     onOpenBookAppointment={() => setIsBookAppointmentOpen(true)}
                     onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
                     hasNudgeNotice={hasNudgeNotice}
                   />
                 ) : userRole === 'lecturer' ? (
                   <LecturerDashboard
-                    advisees={advisees}
+                    advisees={
+                      globalSearchQuery.trim()
+                        ? advisees.filter(
+                            (a) =>
+                              a.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+                              a.matricNo.toLowerCase().includes(globalSearchQuery.toLowerCase())
+                          )
+                        : advisees
+                    }
                     agendaItems={agendaItems}
                     onOpenIntervention={(studentName) => {
                       setInterventionTargetStudent(studentName || 'Sarah Connor');
@@ -573,6 +780,15 @@ export function App() {
                     onAddAgendaItem={handleAddAgendaItem}
                     onNudgeStudent={handleNudgeStudent}
                     onNudgeAllMissing={handleNudgeAllMissing}
+                    onOpenAdvisorChat={(studentName) => {
+                      if (studentName) {
+                        const match = conversations.find((c) =>
+                          c.studentName.toLowerCase().includes(studentName.toLowerCase())
+                        );
+                        if (match) setActiveConversationId(match.id);
+                      }
+                      setCurrentTab('messages');
+                    }}
                   />
                 ) : userRole === 'hod' ? (
                   <DepartmentalControl
@@ -593,10 +809,48 @@ export function App() {
               </>
             )}
 
+            {/* Tab: Advising Messages (Student full-screen view & Adviser/Staff peer-to-peer inbox) */}
+            {currentTab === 'messages' && (
+              <>
+                {userRole === 'student' ? (
+                  <StudentMessagingView
+                    studentProfile={userProfile}
+                    messages={chatMessages}
+                    archivedThreads={userProfile.archivedChats || []}
+                    onSendMessage={handleSendMessage}
+                    onOpenBookAppointment={() => setIsBookAppointmentOpen(true)}
+                    onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
+                  />
+                ) : (
+                  <AdviserMessagingView
+                    conversations={conversations}
+                    activeConversationId={activeConversationId}
+                    onSelectConversation={handleSelectConversation}
+                    onSendReply={handleAdviserReply}
+                    userProfile={userProfile}
+                    onOpenIntervention={(studentName) => {
+                      setInterventionTargetStudent(studentName || 'Sarah Connor');
+                      setInterventionInitialMode('schedule');
+                      setIsInterventionOpen(true);
+                    }}
+                    onNudgeStudent={handleNudgeStudent}
+                  />
+                )}
+              </>
+            )}
+
             {/* Tab: Advising (Lecturer, HOD, Dean only) */}
             {currentTab === 'advising' && (userRole === 'lecturer' || userRole === 'hod' || userRole === 'dean') && (
               <LecturerDashboard
-                advisees={advisees}
+                advisees={
+                  globalSearchQuery.trim()
+                    ? advisees.filter(
+                        (a) =>
+                          a.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
+                          a.matricNo.toLowerCase().includes(globalSearchQuery.toLowerCase())
+                      )
+                    : advisees
+                }
                 agendaItems={agendaItems}
                 onOpenIntervention={(studentName) => {
                   setInterventionTargetStudent(studentName || 'Sarah Connor');
@@ -615,7 +869,15 @@ export function App() {
                 onAddAgendaItem={handleAddAgendaItem}
                 onNudgeStudent={handleNudgeStudent}
                 onNudgeAllMissing={handleNudgeAllMissing}
-                onOpenAdvisorChat={() => setIsAdvisorChatOpen(true)}
+                onOpenAdvisorChat={(studentName) => {
+                  if (studentName) {
+                    const match = conversations.find((c) =>
+                      c.studentName.toLowerCase().includes(studentName.toLowerCase())
+                    );
+                    if (match) setActiveConversationId(match.id);
+                  }
+                  setCurrentTab('messages');
+                }}
               />
             )}
 
@@ -641,7 +903,7 @@ export function App() {
             )}
 
             {/* Tab: Analytics */}
-            {currentTab === 'analytics' && <AnalyticsView />}
+            {currentTab === 'analytics' && <AnalyticsView userRole={userRole} />}
 
             {/* Tab: Settings */}
             {currentTab === 'settings' && (
@@ -659,14 +921,6 @@ export function App() {
       </main>
 
       {/* Interactive Modals */}
-      <AdvisorChatModal
-        isOpen={isAdvisorChatOpen}
-        onClose={() => setIsAdvisorChatOpen(false)}
-        currentUser={userProfile}
-        messages={chatMessages}
-        onSendMessage={handleSendMessage}
-      />
-
       <BookAppointmentModal
         isOpen={isBookAppointmentOpen}
         onClose={() => setIsBookAppointmentOpen(false)}

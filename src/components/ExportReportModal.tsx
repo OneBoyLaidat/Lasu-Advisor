@@ -132,7 +132,7 @@ export const ExportReportModal: React.FC<ExportReportModalProps> = ({
                 onChange={(e) => setIncludeAtRisk(e.target.checked)}
                 className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
               />
-              <span>Early Warning At-Risk Student Registry</span>
+              <span>At-Risk Student Intervention Registry</span>
             </label>
 
             <label className="flex items-center gap-2 cursor-pointer text-slate-800">

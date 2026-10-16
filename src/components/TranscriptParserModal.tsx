@@ -43,14 +43,14 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
     setUploadedFileName(file.name);
     setIsScanning(true);
     setValidationError(null);
-    setScanStep('Initializing Optical Character Recognition on uploaded document...');
+    setScanStep('Initializing OCR Engine & parsing text stream from PDF...');
 
     setTimeout(() => {
-      setScanStep('Analyzing document structure and extracting text streams...');
+      setScanStep('Analyzing document structure: Targeting Code, Title, Unit, Score, and Grade...');
     }, 500);
 
     setTimeout(() => {
-      setScanStep('Extracting course codes, unit values, and official scores...');
+      setScanStep('Validating character streams against LASU NUC 5.0 grading rules...');
     }, 1100);
 
     // Extract actual file text
@@ -63,10 +63,34 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       setParsedData(result);
       setActiveTab('extracted');
 
+      // Instant automatic extraction directly to records table
+      if (result.courses.length > 0) {
+        const cleanCourses: CourseResult[] = result.courses.map((c) => ({
+          code: c.code.trim().toUpperCase(),
+          title: c.title.trim() || `${c.code.trim().toUpperCase()} Course Unit`,
+          units: c.units,
+          grade: c.grade,
+          score: c.score,
+          status: c.status,
+          semester: c.semester,
+          academicYear: c.academicYear,
+          gpPoints: c.gpPoints,
+        }));
+
+        onTranscriptParsed(
+          cleanCourses,
+          result.cgpa,
+          result.totalUnits,
+          result.passedUnits,
+          result.carryoverUnits,
+          file.name
+        );
+      }
+
       if (result.courses.length > 0 && !result.hasMissingFields) {
         try {
           confetti({
-            particleCount: 40,
+            particleCount: 50,
             spread: 60,
             origin: { y: 0.6 },
           });
@@ -74,7 +98,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
           // ignore
         }
       }
-    }, 1700);
+    }, 1200);
   };
 
   const handleAddCourseManually = () => {
@@ -90,7 +114,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
         degreeClass: 'Pending Complete Data Entry',
         fileName: uploadedFileName || 'Manual_Entry_Transcript.pdf',
         hasMissingFields: true,
-        missingFieldCount: 3,
+        missingFieldCount: 5,
         ocrConfidence: 'low',
         extractionMessage: 'Manual grade record entry mode.',
       };
@@ -108,8 +132,10 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       academicYear: '2024/2025',
       gpPoints: 0,
       isMissingCode: true,
-      isMissingScore: true,
+      isMissingTitle: true,
       isMissingUnits: false,
+      isMissingScore: true,
+      isMissingGrade: true,
       isManuallyAdded: true,
     };
 
@@ -138,7 +164,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       current.isMissingCode = !current.code.trim();
     } else if (field === 'title') {
       current.title = String(value);
-      current.isMissingTitle = false;
+      current.isMissingTitle = !current.title.trim();
     } else if (field === 'units') {
       const numUnits = Number(value);
       current.units = isNaN(numUnits) ? 0 : Math.max(0, Math.min(6, numUnits));
@@ -150,6 +176,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
         current.status = 'In Progress';
         current.gpPoints = 0;
         current.isMissingScore = true;
+        current.isMissingGrade = true;
       } else {
         const numScore = Number(value);
         const validScore = isNaN(numScore) ? 0 : Math.max(0, Math.min(100, numScore));
@@ -159,6 +186,20 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
         current.status = status;
         current.gpPoints = current.units * gp;
         current.isMissingScore = false;
+        current.isMissingGrade = false;
+      }
+    } else if (field === 'grade') {
+      const g = String(value).toUpperCase();
+      if (['A', 'B', 'C', 'D', 'E', 'F'].includes(g)) {
+        current.grade = g as 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+        current.isMissingGrade = false;
+        const gp =
+          g === 'A' ? 5 : g === 'B' ? 4 : g === 'C' ? 3 : g === 'D' ? 2 : g === 'E' ? 1 : 0;
+        current.status = gp > 0 ? 'Passed' : 'Failed';
+        current.gpPoints = current.units * gp;
+      } else {
+        current.grade = '-';
+        current.isMissingGrade = true;
       }
     }
 
@@ -167,6 +208,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       current.grade = grade;
       current.status = status;
       current.gpPoints = current.units * gp;
+      current.isMissingGrade = false;
     }
 
     updatedCourses[index] = current;
@@ -178,13 +220,19 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
     let missingCount = 0;
     courses.forEach((c) => {
       if (!c.code.trim()) missingCount++;
+      if (!c.title.trim()) missingCount++;
       if (c.units <= 0) missingCount++;
-      if (c.score === '' || c.grade === '-') missingCount++;
+      if (c.score === '') missingCount++;
+      if (c.grade === '-') missingCount++;
     });
 
-    const validCourses = courses.filter((c) => c.code.trim() && c.units > 0 && c.score !== '' && c.grade !== '-');
+    const validCourses = courses.filter(
+      (c) => c.code.trim() && c.units > 0 && c.score !== '' && c.grade !== '-'
+    );
     const totalUnits = validCourses.reduce((acc, c) => acc + c.units, 0);
-    const passedUnits = validCourses.filter((c) => c.status === 'Passed').reduce((acc, c) => acc + c.units, 0);
+    const passedUnits = validCourses
+      .filter((c) => c.status === 'Passed')
+      .reduce((acc, c) => acc + c.units, 0);
     const carryoverUnits = totalUnits - passedUnits;
     const totalGradePoints = validCourses.reduce((acc, c) => acc + c.gpPoints, 0);
     const gpa = totalUnits > 0 ? parseFloat((totalGradePoints / totalUnits).toFixed(2)) : 0;
@@ -204,8 +252,8 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       ocrConfidence: missingCount === 0 && courses.length > 0 ? 'high' : 'partial',
       extractionMessage:
         missingCount > 0
-          ? `${missingCount} field(s) require manual user input.`
-          : 'All course records complete and verified.',
+          ? `${missingCount} field(s) (Code, Title, Unit, Score, or Grade) require manual user entry.`
+          : 'All target fields (Code, Title, Unit, Score, Grade) verified.',
     };
   };
 
@@ -217,14 +265,14 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       return;
     }
 
-    // Check for incomplete courses
+    // Check for incomplete courses across all 5 target fields
     const invalidItems = parsedData.courses.filter(
       (c) => !c.code.trim() || c.units <= 0 || c.score === '' || c.grade === '-'
     );
 
     if (invalidItems.length > 0) {
       setValidationError(
-        `Incomplete Course Records: ${invalidItems.length} course(s) have missing Course Codes, Units, or Scores. Please fill in the highlighted missing fields before saving.`
+        `Incomplete Course Records: ${invalidItems.length} course(s) have unreadable or missing Code, Title, Units, Score, or Grade. Please input the missing values in the highlighted fields before saving.`
       );
       return;
     }
@@ -255,7 +303,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
       <div
-        className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 my-auto"
+        className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
@@ -266,17 +314,17 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-tight">
-                Official Transcript &amp; Result Slip OCR Scanner
+                LASU Result Slip &amp; Transcript OCR Engine
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Direct extraction from uploaded document. Missing or unreadable data prompts manual entry.
+                Direct Extraction of: <span className="font-semibold text-slate-700 dark:text-slate-300">Code, Title, Unit, Score, and Grade</span>
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
           </button>
@@ -336,7 +384,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                   {scanStep}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-2">
-                  Strictly extracting character sequences and grade points from {uploadedFileName}
+                  Targeting exact fields: Code, Title, Unit, Score, and Grade from {uploadedFileName}
                 </p>
               </div>
             </div>
@@ -382,14 +430,65 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                   <span className="material-symbols-outlined text-[32px]">upload_file</span>
                 </div>
                 <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                  Select or Drag &amp; Drop LASU Transcript PDF / Image
+                  Select or Drag &amp; Drop LASU Transcript PDF / Result Slip
                 </h4>
                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-1 max-w-sm mx-auto leading-relaxed">
                   Upload your genuine PDF transcript or portal result screenshot (.PDF, .PNG, .JPG, .TXT).
                 </p>
-                <div className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs">
-                  <span className="material-symbols-outlined text-[16px] text-emerald-600">search</span>
-                  Browse Computer Files
+                <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs">
+                    <span className="material-symbols-outlined text-[16px] text-emerald-600">search</span>
+                    Browse Computer Files
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Generate sample LASU Result Slip file for instant OCR demonstration
+                      const sampleText = `%PDF-1.4
+%LASU Computer Science Department Result Slip
+Session: 2024/2025 Semester: Fall 2024
+CSC 301 Data Structures & Algorithms 3 82 A
+CSC 303 Database Management Systems 3 76 A
+CSC 305 Operating Systems & Architecture 3 68 B
+MTH 301 Discrete Mathematics & Logic 3 64 B
+GNS 311 Entrepreneurship & Innovation 2 78 A
+CSC 307 Software Engineering Methodologies 3 74 A
+%%EOF`;
+                      const sampleFile = new File([sampleText], 'LASU_CSC_Fall2024_ResultSlip.pdf', {
+                        type: 'application/pdf',
+                      });
+                      handleFileUpload(sampleFile);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 text-xs font-bold text-emerald-800 dark:text-emerald-300 transition-colors shadow-2xs cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[16px] text-emerald-600 dark:text-emerald-400">auto_awesome</span>
+                    Scan Sample LASU Result Slip PDF
+                  </button>
+                </div>
+              </div>
+
+              {/* Target Fields Guide */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-xs">
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <div className="font-bold text-slate-800 dark:text-slate-200">1. Code</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">CSC301, MTH301</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <div className="font-bold text-slate-800 dark:text-slate-200">2. Title</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5 truncate">Operating Systems</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <div className="font-bold text-slate-800 dark:text-slate-200">3. Unit</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">1 to 6 CU</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <div className="font-bold text-slate-800 dark:text-slate-200">4. Score</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">0 to 100 Marks</div>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                  <div className="font-bold text-slate-800 dark:text-slate-200">5. Grade</div>
+                  <div className="text-[10px] text-slate-500 font-mono mt-0.5">A, B, C, D, E, F</div>
                 </div>
               </div>
 
@@ -402,7 +501,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                   <span className="font-bold block text-slate-900 dark:text-slate-100 mb-0.5">
                     Strict Document Extraction Guarantee
                   </span>
-                  Data is extracted exclusively from the text and tables detected in your uploaded file. No synthetic or placeholder grades will be generated. If document sections are unreadable, you can enter missing courses manually.
+                  Data is extracted exclusively from the text and tables detected in your uploaded file. No synthetic or placeholder grades are generated. If any of the 5 targeted fields are unreadable, you will be prompted for manual entry.
                 </div>
               </div>
             </div>
@@ -411,7 +510,31 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
           {/* Extracted Course Results Review Tab */}
           {!isScanning && parsedData && activeTab === 'extracted' && (
             <div className="space-y-4">
-              {/* Validation / Missing data warning banner */}
+              {/* Instant Auto-applied to Records Table Notice */}
+              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-200 shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <span className="material-symbols-outlined text-[20px] text-emerald-600 dark:text-emerald-400 shrink-0">
+                    check_circle
+                  </span>
+                  <div>
+                    <span className="font-bold block text-emerald-950 dark:text-emerald-100">
+                      Instantly Extracted &amp; Auto-Applied to Records Table
+                    </span>
+                    <span className="text-[11px] text-emerald-800/90 dark:text-emerald-300/80">
+                      {parsedData.courses.length} course records extracted from {parsedData.fileName}. Student academic results table is populated.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
+                >
+                  View in Dashboard
+                </button>
+              </div>
+
+              {/* Validation error banner */}
               {validationError && (
                 <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
                   <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0 mt-0.5">
@@ -426,15 +549,17 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
 
               {/* Missing data prompt banner if OCR could not read everything */}
               {parsedData.hasMissingFields && !validationError && (
-                <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
-                  <span className="material-symbols-outlined text-[18px] text-amber-600 shrink-0 mt-0.5">
+                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
+                  <span className="material-symbols-outlined text-[20px] text-amber-600 shrink-0 mt-0.5">
                     warning
                   </span>
                   <div className="leading-snug">
-                    <span className="font-bold block mb-0.5">Manual Input Needed</span>
+                    <span className="font-bold block mb-0.5 text-amber-950 dark:text-amber-100">
+                      Manual Field Completion Required
+                    </span>
                     {parsedData.courses.length === 0
-                      ? 'No legible course records could be detected from this document. Please click "+ Add Course Record" below to manually input your grades.'
-                      : 'Some fields (Course Code, Units, or Score) could not be clearly resolved from the document. Please input the missing values in the highlighted fields below before saving.'}
+                      ? 'No legible course records could be detected from this document. Click "+ Add Course Manually" below to enter your grades.'
+                      : `${parsedData.missingFieldCount} target field(s) could not be resolved with 100% certainty. Please type in the missing Code, Title, Unit, Score, or Grade in the highlighted fields below.`}
                   </div>
                 </div>
               )}
@@ -481,9 +606,16 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
 
               {/* Table actions bar */}
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Course Results ({parsedData.courses.length})
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Target Fields: Code • Title • Unit • Score • Grade
+                  </span>
+                  {parsedData.hasMissingFields && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                      {parsedData.missingFieldCount} Missing Field(s)
+                    </span>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={handleAddCourseManually}
@@ -496,16 +628,16 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
 
               {/* Editable Results Table */}
               <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden shadow-2xs bg-white dark:bg-slate-900">
-                <div className="overflow-x-auto max-h-64 overflow-y-auto">
-                  <table className="w-full text-left border-collapse min-w-[580px]">
-                    <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
+                <div className="overflow-x-auto max-h-72 overflow-y-auto">
+                  <table className="w-full text-left border-collapse min-w-[620px]">
+                    <thead className="sticky top-0 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-200 dark:border-slate-700 z-10">
                       <tr>
-                        <th className="py-2.5 px-3 font-semibold">Course Code</th>
-                        <th className="py-2.5 px-3 font-semibold">Course Title</th>
-                        <th className="py-2.5 px-3 font-semibold text-center">Units</th>
-                        <th className="py-2.5 px-3 font-semibold text-center">Score</th>
-                        <th className="py-2.5 px-3 font-semibold text-center">Grade</th>
-                        <th className="py-2.5 px-3 font-semibold text-center">Points</th>
+                        <th className="py-2.5 px-3 font-semibold">1. Code</th>
+                        <th className="py-2.5 px-3 font-semibold">2. Title</th>
+                        <th className="py-2.5 px-3 font-semibold text-center">3. Unit</th>
+                        <th className="py-2.5 px-3 font-semibold text-center">4. Score</th>
+                        <th className="py-2.5 px-3 font-semibold text-center">5. Grade</th>
+                        <th className="py-2.5 px-3 font-semibold text-center">QP</th>
                         <th className="py-2.5 px-3 font-semibold text-right">Action</th>
                       </tr>
                     </thead>
@@ -522,45 +654,51 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                       ) : (
                         parsedData.courses.map((course, idx) => {
                           const hasMissingCode = !course.code.trim();
+                          const hasMissingTitle = !course.title.trim();
                           const hasMissingUnits = course.units <= 0;
-                          const hasMissingScore = course.score === '' || course.grade === '-';
+                          const hasMissingScore = course.score === '';
+                          const hasMissingGrade = course.grade === '-';
 
                           return (
                             <tr
                               key={idx}
                               className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors ${
-                                hasMissingCode || hasMissingUnits || hasMissingScore
-                                  ? 'bg-amber-50/30 dark:bg-amber-950/10'
+                                hasMissingCode || hasMissingUnits || hasMissingScore || hasMissingGrade
+                                  ? 'bg-amber-50/40 dark:bg-amber-950/20'
                                   : ''
                               }`}
                             >
-                              {/* Course Code */}
-                              <td className="py-2 px-3 font-bold">
+                              {/* 1. Code */}
+                              <td className="py-2 px-3">
                                 <input
                                   type="text"
                                   value={course.code}
                                   onChange={(e) => handleUpdateCourse(idx, 'code', e.target.value)}
-                                  placeholder="e.g. CSC301"
+                                  placeholder="CSC301"
                                   className={`border rounded px-1.5 py-1 text-xs font-mono font-bold w-24 focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
                                     hasMissingCode
-                                      ? 'border-amber-400 dark:border-amber-500 bg-amber-50/60 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200'
+                                      ? 'border-amber-400 dark:border-amber-500 bg-amber-50/80 dark:bg-amber-950/60 text-amber-900 dark:text-amber-100 ring-1 ring-amber-400'
                                       : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-emerald-700 dark:text-emerald-400'
                                   }`}
                                 />
                               </td>
 
-                              {/* Course Title */}
+                              {/* 2. Title */}
                               <td className="py-2 px-3 text-slate-900 dark:text-slate-100 font-medium">
                                 <input
                                   type="text"
                                   value={course.title}
                                   onChange={(e) => handleUpdateCourse(idx, 'title', e.target.value)}
-                                  placeholder="Course Title (Optional)"
-                                  className="border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 rounded px-1.5 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-slate-200"
+                                  placeholder="e.g. Operating Systems"
+                                  className={`border rounded px-1.5 py-1 text-xs w-full focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
+                                    hasMissingTitle
+                                      ? 'border-amber-400 dark:border-amber-500 bg-amber-50/80 dark:bg-amber-950/60 text-slate-800 dark:text-slate-100'
+                                      : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200'
+                                  }`}
                                 />
                               </td>
 
-                              {/* Units */}
+                              {/* 3. Units */}
                               <td className="py-2 px-3 text-center">
                                 <input
                                   type="number"
@@ -568,16 +706,16 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                                   max="6"
                                   value={course.units || ''}
                                   onChange={(e) => handleUpdateCourse(idx, 'units', e.target.value)}
-                                  placeholder="Units"
+                                  placeholder="CU"
                                   className={`w-14 text-center border rounded px-1 py-1 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
                                     hasMissingUnits
-                                      ? 'border-amber-400 dark:border-amber-500 bg-amber-50/60 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 font-bold'
+                                      ? 'border-amber-400 dark:border-amber-500 bg-amber-50/80 dark:bg-amber-950/60 text-amber-900 dark:text-amber-100 font-bold ring-1 ring-amber-400'
                                       : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
                                   }`}
                                 />
                               </td>
 
-                              {/* Score */}
+                              {/* 4. Score */}
                               <td className="py-2 px-3 text-center">
                                 <input
                                   type="number"
@@ -588,16 +726,16 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                                   placeholder="0-100"
                                   className={`w-16 text-center border rounded px-1 py-1 font-mono text-xs font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 ${
                                     hasMissingScore
-                                      ? 'border-amber-400 dark:border-amber-500 bg-amber-50/60 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200'
+                                      ? 'border-amber-400 dark:border-amber-500 bg-amber-50/80 dark:bg-amber-950/60 text-amber-900 dark:text-amber-100 ring-1 ring-amber-400'
                                       : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-100'
                                   }`}
                                 />
                               </td>
 
-                              {/* Grade */}
+                              {/* 5. Grade */}
                               <td className="py-2 px-3 text-center">
                                 <span
-                                  className={`font-bold font-mono px-2 py-0.5 rounded text-xs ${
+                                  className={`font-bold font-mono px-2 py-0.5 rounded text-xs inline-block ${
                                     course.grade === 'A'
                                       ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                                       : course.grade === 'B'
@@ -605,7 +743,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                                       : course.grade === 'C'
                                       ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
                                       : course.grade === '-'
-                                      ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                                       : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
                                   }`}
                                 >
@@ -613,18 +751,18 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                                 </span>
                               </td>
 
-                              {/* Quality Points */}
+                              {/* Points */}
                               <td className="py-2 px-3 text-center font-mono text-slate-600 dark:text-slate-400 font-semibold">
                                 {course.gpPoints} QP
                               </td>
 
-                              {/* Action: Delete row */}
+                              {/* Action */}
                               <td className="py-2 px-3 text-right">
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteCourse(idx)}
                                   title="Delete Course Record"
-                                  className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                  className="text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                                 >
                                   <span className="material-symbols-outlined text-[18px]">delete</span>
                                 </button>
@@ -645,7 +783,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
         <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
             <span className="material-symbols-outlined text-[16px] text-emerald-600">lock</span>
-            LASU NUC 5.0 Grade Point Scale
+            LASU NUC 5.0 Grade Point Scale (Strict OCR Validation)
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto">

@@ -8,6 +8,7 @@ interface SidebarProps {
   userRole: UserRole;
   isOpenMobile: boolean;
   setIsOpenMobile: (open: boolean) => void;
+  unreadMessagesCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -16,18 +17,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userRole,
   isOpenMobile,
   setIsOpenMobile,
+  unreadMessagesCount = 0,
 }) => {
   // Strict Role-Based Navigation Items for authenticated userRole:
   // - Student: Academic Overview, Analytics & Projections, Settings & Security
-  // - Lecturer: Adviser Oversight, Cohort & Result Audit, Analytics & Projections, Settings & Security
-  // - HOD: Departmental Control, Cohort & Result Audit, Analytics & Projections, Settings & Security
-  // - Dean: Executive Overview, Departmental Control, Cohort & Result Audit, Analytics & Projections, Settings & Security
+  // - Lecturer: Adviser Oversight, Advising Messages, Cohort & Result Audit, Analytics & Projections, Settings & Security
+  // - HOD: Departmental Control, Advising Messages, Cohort & Result Audit, Analytics & Projections, Settings & Security
+  // - Dean: Executive Overview, Departmental Control, Advising Messages, Cohort & Result Audit, Analytics & Projections, Settings & Security
   const allNavItems = [
     {
       id: 'dashboard',
-      label: userRole === 'student' ? 'Academic Overview' : 'Adviser Oversight',
-      icon: userRole === 'student' ? 'school' : 'dashboard',
-      roles: ['student', 'lecturer'],
+      label: userRole === 'student' ? 'Academic Overview' : 'Academic Oversight & Result Audit',
+      icon: userRole === 'student' ? 'school' : 'fact_check',
+      roles: ['student', 'lecturer', 'hod', 'dean'],
+    },
+    {
+      id: 'messages',
+      label: 'Advising Messages',
+      icon: 'forum',
+      badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
+      roles: ['student', 'lecturer', 'hod', 'dean'],
     },
     {
       id: 'departmental',
@@ -40,12 +49,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: 'Executive Overview',
       icon: 'monitoring',
       roles: ['dean'],
-    },
-    {
-      id: 'advising',
-      label: 'Cohort & Result Audit',
-      icon: 'group',
-      roles: ['lecturer', 'hod', 'dean'],
     },
     {
       id: 'analytics',
@@ -147,7 +150,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 >
                   {item.icon}
                 </span>
-                <span className="truncate">{item.label}</span>
+                <span className="truncate flex-1">{item.label}</span>
+                {item.badge !== undefined && item.badge > 0 && (
+                  <span className="ml-auto bg-emerald-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-5 text-center">
+                    {item.badge}
+                  </span>
+                )}
               </button>
             );
           })}

@@ -399,13 +399,17 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <div className="w-16 h-16 rounded-full border-2 border-emerald-200 dark:border-emerald-700 p-0.5 mb-3 relative bg-slate-50 dark:bg-slate-800">
                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 z-10" />
                 <img
-                  src={ADVISER_AVATAR}
-                  alt="Dr. Sarah Jenkins"
+                  src={studentProfile.assignedAdviserAvatar || ADVISER_AVATAR}
+                  alt={studentProfile.assignedAdviserName || 'Level Adviser'}
                   className="w-full h-full rounded-full object-cover"
                 />
               </div>
-              <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">Dr. Sarah Jenkins</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Assoc. Prof, Computer Science</p>
+              <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                {studentProfile.assignedAdviserName || 'Dr. Sarah Jenkins'}
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {studentProfile.assignedAdviserTitle || 'Assoc. Prof, Computer Science'}
+              </p>
               <span className="mt-2 text-[10px] bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 font-semibold">
                 Office Hours: Mon/Wed 10-2pm
               </span>
@@ -429,46 +433,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <span className="material-symbols-outlined text-[16px] text-slate-500 dark:text-slate-400">event</span>
                 Book Appointment
               </button>
-            </div>
-          </div>
-
-          {/* Semester Progress Widget */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col relative shadow-xs">
-            <div className="flex items-center gap-2 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
-              <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-[18px]">timeline</span>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 m-0">Semester Progress</h3>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              <div>
-                <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1.5">
-                  <span className="font-medium">Weeks Completed</span>
-                  <span className="text-slate-900 dark:text-slate-100 font-bold font-mono">
-                    {stats.weeksCompleted} / {stats.totalWeeks}
-                  </span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-600 rounded-full"
-                    style={{ width: `${(stats.weeksCompleted / stats.totalWeeks) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400 mb-1.5">
-                  <span className="font-medium">Assessments Done</span>
-                  <span className="text-slate-900 dark:text-slate-100 font-bold font-mono">
-                    {stats.assessmentsDone} / {stats.totalAssessments}
-                  </span>
-                </div>
-                <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-amber-500 rounded-full"
-                    style={{ width: `${(stats.assessmentsDone / stats.totalAssessments) * 100}%` }}
-                  />
-                </div>
-              </div>
             </div>
           </div>
         </div>

@@ -83,20 +83,22 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right side: Search + Dark Mode + Notification + Profile */}
       <div className="flex items-center gap-2 sm:gap-4">
-        {/* Global Search Bar */}
-        <div className="relative group hidden lg:block w-52 xl:w-60">
-          <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[18px]">
-            search
-          </span>
-          <input
-            id="global-search-input"
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search students, courses..."
-            className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full py-1.5 pl-9 pr-4 text-xs placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-slate-100 transition-all focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 focus:ring-1 focus:ring-emerald-600"
-          />
-        </div>
+        {/* Student Records Search Bar - Restricted to Lecturers, HODs, and Deans only */}
+        {(userRole === 'lecturer' || userRole === 'hod' || userRole === 'dean') && (
+          <div className="relative group hidden sm:block w-52 xl:w-72">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[18px]">
+              search
+            </span>
+            <input
+              id="global-search-input"
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search records by name or matric..."
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full py-1.5 pl-9 pr-4 text-xs placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-900 dark:text-slate-100 transition-all focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 focus:ring-1 focus:ring-emerald-600"
+            />
+          </div>
+        )}
 
         {/* Action icons */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 border-l border-slate-200 dark:border-slate-800 pl-2 sm:pl-4 relative">
