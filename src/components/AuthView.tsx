@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { OFFICIAL_LOGO_URL } from '../data/mockData';
 import { UserProfile, LASU_DEPARTMENTS, EntryMode } from '../types';
-import { authenticateUser, registerNewUser, getRegisteredAccounts } from '../lib/authService';
+import { getRegisteredAccounts } from '../lib/authService';
+import { sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   computeAcademicLevel,
   STANDARD_ACADEMIC_SESSIONS,
@@ -103,21 +105,18 @@ export const AuthView: React.FC<AuthViewProps> = ({
   };
 
   // 1. Unified Login Handler
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      const result = authenticateUser(identifier, password);
-
+    try {
+      const result = await signInAccount(identifier, password);
       if (!result.success || !result.profile) {
-        setErrorMessage(result.error || 'Access Denied: Unregistered credentials.');
+        setErrorMessage(result.error || 'Access denied. Check your email and password.');
         return;
       }
-
       try {
         confetti({
           particleCount: 45,
@@ -129,19 +128,22 @@ export const AuthView: React.FC<AuthViewProps> = ({
       }
 
       onLoginSuccess(result.profile);
-    }, 400);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not sign in. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 2. Student Registration Handler (Without Results/Transcript Upload Requirement)
-  const handleStudentSignupSubmit = (e: React.FormEvent) => {
+  const handleStudentSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      const result = registerNewUser({
+    try {
+      const result = await signUpAccount({
         name: fullName,
         email: signupEmail,
         password: signupPassword,
@@ -154,8 +156,19 @@ export const AuthView: React.FC<AuthViewProps> = ({
         entryMode: entryMode,
       });
 
-      if (!result.success || !result.profile) {
+      if (!result.success) {
         setErrorMessage(result.error || 'Registration failed. Please verify your submitted details.');
+        return;
+      }
+
+      if (result.confirmationRequired) {
+        setSuccessMessage('Check your email to confirm your LASU Advisor account, then sign in.');
+        setCurrentPage('login');
+        window.location.hash = 'login';
+        return;
+      }
+      if (!result.profile) {
+        setErrorMessage('Your account was created, but the profile could not be loaded. Please sign in.');
         return;
       }
 
@@ -170,24 +183,23 @@ export const AuthView: React.FC<AuthViewProps> = ({
         // ignore
       }
 
-      setTimeout(() => {
-        if (result.profile) {
-          onLoginSuccess(result.profile);
-        }
-      }, 700);
-    }, 450);
+      onLoginSuccess(result.profile);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Registration failed. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // 3. Staff Registration Handler
-  const handleStaffSignupSubmit = (e: React.FormEvent) => {
+  const handleStaffSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      const result = registerNewUser({
+    try {
+      const result = await signUpAccount({
         name: staffName,
         email: signupEmail,
         password: signupPassword,
@@ -213,12 +225,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
         // ignore
       }
 
-      setTimeout(() => {
-        if (result.profile) {
-          onLoginSuccess(result.profile);
-        }
-      }, 700);
-    }, 450);
+      onLoginSuccess(result.profile);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Staff registration failed.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const registeredAccounts = getRegisteredAccounts();
@@ -302,7 +314,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Institutional Identifier
+                {isSupabaseConfigured ? 'Email Address' : 'Institutional Identifier'}
               </label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[18px]">
@@ -317,7 +329,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     setIdentifier(e.target.value);
                     setErrorMessage(null);
                   }}
-                  placeholder="Email, Matric No, or Staff ID"
+                  placeholder={isSupabaseConfigured ? 'name@lasu.edu.ng' : 'Email, Matric No, or Staff ID'}
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2.5 pl-10 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 shadow-2xs"
                 />
               </div>
@@ -330,9 +342,16 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </label>
                 <a
                   href="#forgot"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.preventDefault();
-                    alert('Password reset instructions have been sent to your registered institutional address.');
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
+                    try {
+                      await sendPasswordReset(identifier);
+                      setSuccessMessage('If an account exists for this email, password recovery instructions have been sent.');
+                    } catch (error) {
+                      setErrorMessage(error instanceof Error ? error.message : 'Could not start password recovery.');
+                    }
                   }}
                   className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline"
                 >
@@ -393,7 +412,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
           <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
             <p className="text-xs text-slate-600 dark:text-slate-400">
               New to LASU Advisor?{' '}
-              <a
+              {!isSupabaseConfigured && <a
                 href="#register"
                 onClick={(e) => {
                   e.preventDefault();
@@ -402,7 +421,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
               >
                 Create an Account →
-              </a>
+              </a>}
             </p>
 
             <div className="mt-3 flex items-center justify-center gap-3 text-[11px] text-slate-400 dark:text-slate-500">
@@ -417,8 +436,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <span className="material-symbols-outlined text-[14px]">school</span>
                 Student Registration
               </a>
-              <span>•</span>
-              <a
+              {!isSupabaseConfigured && <><span>•</span><a
                 href="#register-staff"
                 onClick={(e) => {
                   e.preventDefault();
@@ -428,12 +446,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
               >
                 <span className="material-symbols-outlined text-[14px]">badge</span>
                 Staff Registration
-              </a>
+              </a></>}
             </div>
           </div>
 
           {/* Registered Accounts Helper Drawer */}
-          <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800">
+          {!isSupabaseConfigured && <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800">
             <button
               type="button"
               onClick={() => setShowDemoCredentials(!showDemoCredentials)}
@@ -482,7 +500,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 ))}
               </div>
             )}
-          </div>
+          </div>}
         </div>
       )}
 
@@ -509,7 +527,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
           </div>
 
           {/* Registration Category Cards with Direct Links */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 my-6">
+          <div className={`grid grid-cols-1 ${isSupabaseConfigured ? '' : 'sm:grid-cols-2'} gap-4 my-6`}>
             {/* Student Portal Card */}
             <div className="p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex flex-col justify-between group">
               <div>
@@ -540,6 +558,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
 
             {/* Staff & Faculty Portal Card */}
+            {!isSupabaseConfigured && <>
             <div className="p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex flex-col justify-between group">
               <div>
                 <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 flex items-center justify-center mb-3">
@@ -567,6 +586,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </a>
               </div>
             </div>
+            </>}
           </div>
 
           {/* Return to Login link */}

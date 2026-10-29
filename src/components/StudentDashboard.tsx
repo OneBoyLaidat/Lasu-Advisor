@@ -55,12 +55,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-semibold text-emerald-800 dark:text-emerald-300">
               <span className="material-symbols-outlined text-[16px] text-emerald-600 dark:text-emerald-400">verified</span>
               <span>Result Slip Verified</span>
-              <button
-                onClick={onOpenTranscriptModal}
-                className="text-emerald-700 dark:text-emerald-400 hover:text-emerald-900 underline font-bold ml-1 text-[11px]"
-              >
-                Re-scan
-              </button>
             </div>
           ) : (
             <button
@@ -344,13 +338,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Official NUC 5.0 Grading System
               </span>
-              <button
+              {!studentProfile.hasUploadedTranscript && <button
                 id="view-full-transcript-link"
                 onClick={onOpenTranscriptModal}
                 className="text-xs text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition-colors inline-flex items-center gap-1 font-bold"
               >
                 Scan / Upload Results <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-              </button>
+              </button>}
             </div>
           </div>
         </div>

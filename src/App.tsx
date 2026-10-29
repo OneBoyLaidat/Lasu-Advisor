@@ -41,6 +41,8 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { AuthView } from './components/AuthView';
 import { SettingsView } from './components/SettingsView';
 import { propagateAdviserAssignmentToStoredAccounts } from './lib/authService';
+import { getCurrentProfile, loadDirectMessages, loadLatestTranscript, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistTranscript, persistUserProfile, signOutAccount } from './lib/liveDataService';
+import { isSupabaseConfigured } from './lib/supabaseClient';
 
 // Modal imports
 import { BookAppointmentModal } from './components/BookAppointmentModal';
@@ -60,12 +62,13 @@ interface ToastNotice {
 export function App() {
   // Global State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(isSupabaseConfigured);
   const [userRole, setUserRole] = useState<UserRole>('student');
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
-  const [hasNudgeNotice, setHasNudgeNotice] = useState<boolean>(true);
+  const [hasNudgeNotice, setHasNudgeNotice] = useState<boolean>(false);
 
   // Dark Mode / Theme state with local persistence (default: dark)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -119,18 +122,15 @@ export function App() {
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(AGENDA_ITEMS);
   const [courseRates, setCourseRates] = useState<CourseSuccessRate[]>(COURSE_SUCCESS_RATES);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
+  const [studentThreads, setStudentThreads] = useState<Record<string, ChatMessage[]>>(() =>
+    !isSupabaseConfigured ? { 's.jenkins@lasu.edu.ng': INITIAL_CHAT_MESSAGES } : {}
+  );
+  const [activeStudentAdviserEmail, setActiveStudentAdviserEmail] = useState('');
   const [conversations, setConversations] = useState<StudentConversation[]>(INITIAL_CONVERSATIONS);
   const [activeConversationId, setActiveConversationId] = useState<string>('conv_michael');
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>([
     {
-      id: 'n1',
-      title: 'Result Verification Required',
-      desc: 'Level Adviser Dr. Sarah Jenkins requested your official Fall 2024 result slip.',
-      time: '15m ago',
-      urgent: true,
-      type: 'nudge',
-    },
     {
       id: 'n2',
       title: 'Academic Performance Audit Alert',
@@ -148,6 +148,57 @@ export function App() {
       type: 'deadline',
     },
   ]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let active = true;
+    getCurrentProfile().then(async (profile) => {
+      if (!active) return;
+      if (profile) {
+        setUserProfile(profile);
+        setUserRole(profile.role);
+        setActiveStudentAdviserEmail(profile.role === 'student' ? profile.assignedAdviserEmail || '' : '');
+        setCurrentTab(profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
+        setIsAuthenticated(true);
+        const transcript = await loadLatestTranscript(profile.id);
+        if (active && transcript) {
+          const passedUnits = transcript.courses.filter((course) => course.status === 'Passed').reduce((sum, course) => sum + course.units, 0);
+          const totalUnits = transcript.courses.reduce((sum, course) => sum + course.units, 0);
+          setCourseResults(transcript.courses);
+          setUserProfile((previous) => ({ ...previous, hasUploadedTranscript: true, transcriptFileName: transcript.fileName }));
+          setStudentStats((previous) => ({ ...previous, cgpa: transcript.cgpa, totalUnits, passedUnits, carryoverUnits: totalUnits - passedUnits }));
+        }
+      }
+    }).catch((error) => {
+      console.error('Could not restore Supabase session', error);
+    }).finally(() => {
+      if (active) setIsAuthInitializing(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated && isSupabaseConfigured) {
+      persistUserProfile(userProfile).catch((error) => console.error('Could not persist profile', error));
+    }
+  }, [isAuthenticated, userProfile]);
+
+  useEffect(() => {
+    if (!isAuthenticated || userRole !== 'student' || !isSupabaseConfigured) return;
+    let active = true;
+    loadDirectMessages(userProfile.id).then((loaded) => {
+      if (!active || loaded.length === 0) return;
+      setStudentThreads((previous) => {
+        const next = { ...previous };
+        loaded.forEach(({ email, message }) => {
+          const existing = next[email] || [];
+          if (!existing.some((item) => item.id === message.id)) next[email] = [...existing, message];
+        });
+        return next;
+      });
+    }).catch((error) => console.error('Could not load messages', error));
+    return () => { active = false; };
+  }, [isAuthenticated, userRole, userProfile.id]);
 
   // Modal Control States
   const [isBookAppointmentOpen, setIsBookAppointmentOpen] = useState(false);
@@ -186,7 +237,7 @@ export function App() {
       return ['messages', 'departmental', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'dean') {
-      return ['executive', 'analytics', 'settings'].includes(tab);
+      return ['messages', 'executive', 'analytics', 'settings'].includes(tab);
     }
     return true;
   };
@@ -314,7 +365,7 @@ export function App() {
   };
 
   // Send chat message (Strict Peer-to-Peer without automated AI bot intervention)
-  const handleSendMessage = (text: string) => {
+  const handleSendMessage = (text: string, recipientEmail?: string) => {
     if (!userProfile) {
       showToast('Authentication Required', 'You must be logged in to send advising messages.', 'warning');
       return;
@@ -328,16 +379,24 @@ export function App() {
       senderRole: isStudent ? 'Student' : 'Level Adviser',
       studentName: isStudent ? userProfile.name : undefined,
       studentMatric: isStudent ? userProfile.matricNo : undefined,
+      recipientName: isStudent ? recipientEmail : undefined,
       text,
       timestamp: 'Just now',
     };
 
-    setChatMessages((prev) => [...prev, newMsg]);
+    if (isStudent && recipientEmail) {
+      setStudentThreads((prev) => ({ ...prev, [recipientEmail]: [...(prev[recipientEmail] || []), newMsg] }));
+      if (recipientEmail === userProfile.assignedAdviserEmail) setChatMessages((prev) => [...prev, newMsg]);
+      persistDirectMessage({ senderId: userProfile.id, recipientEmail, body: text, threadKey: `${userProfile.id}:${recipientEmail}` })
+        .catch((error) => showToast('Message not saved', error instanceof Error ? error.message : 'Try sending again.', 'warning'));
+    } else {
+      setChatMessages((prev) => [...prev, newMsg]);
+    }
 
     // Also synchronize with the adviser's conversation inbox for Michael Adebayo or matching student
     setConversations((prev) =>
       prev.map((c) => {
-        if (c.id === 'conv_michael' || c.studentName === userProfile.name) {
+        if (c.studentId === userProfile.id && (!recipientEmail || recipientEmail === userProfile.assignedAdviserEmail)) {
           return {
             ...c,
             lastMessage: text,
@@ -426,8 +485,18 @@ export function App() {
     showToast('Appointment Booked', `Session confirmed with ${appointment.adviserName} on ${appointment.date}.`, 'success');
   };
 
+  const handleSelectStudentAdviser = (email: string) => {
+    setActiveStudentAdviserEmail(email);
+    if (!email) return;
+    markDirectMessagesRead(userProfile.id, email).catch((error) => console.error('Could not mark messages read', error));
+    setStudentThreads((previous) => ({
+      ...previous,
+      [email]: (previous[email] || []).map((message) => message.sender === 'adviser' ? { ...message, isRead: true } : message),
+    }));
+  };
+
   // Save Adviser Assignment with global propagation and message archiving per session
-  const handleSaveAdvisorAssignment = (
+  const handleSaveAdvisorAssignment = async (
     advId: string,
     level: string,
     session: string = '2025/2026',
@@ -435,6 +504,15 @@ export function App() {
   ) => {
     const targetAdv = advisers.find((a) => a.id === advId);
     if (!targetAdv) return;
+
+    if (isSupabaseConfigured && userProfile.role === 'hod') {
+      try {
+        await persistAdviserAssignment(targetAdv.email, targetAdv.department, session, level);
+      } catch (error) {
+        showToast('Assignment not saved', error instanceof Error ? error.message : 'Try again.', 'warning');
+        throw error;
+      }
+    }
 
     // 1. Update advisers state (per session assignment)
     setAdvisers((prev) =>
@@ -574,14 +652,16 @@ export function App() {
   };
 
   // OCR Transcript Parsed handler: Populates student results and synchronizes with Adviser roster!
-  const handleTranscriptParsed = (
+  const handleTranscriptParsed = async (
     courses: CourseResult[],
     newCgpa: number,
     totalUnits: number,
     passedUnits: number,
     carryoverUnits: number,
-    fileName: string
+    fileName: string,
+    uploadedFile?: File
   ) => {
+    await persistTranscript(userProfile, courses, newCgpa, fileName, uploadedFile);
     // 1. Update Student's courses & stats
     if (courses.length > 0) {
       setCourseResults(courses);
@@ -601,6 +681,8 @@ export function App() {
       transcriptUploadDate: 'Today',
       transcriptFileName: fileName,
     }));
+
+    setNotifications((prev) => prev.filter((notification) => notification.type !== 'nudge' && notification.title !== 'Result Verification Required'));
 
     // 3. Update Advisee record in Adviser Roster so Adviser sees immediate compliance!
     setAdvisees((prev) =>
@@ -641,6 +723,9 @@ export function App() {
   };
 
   if (!isAuthenticated) {
+    if (isAuthInitializing) {
+      return <div className="min-h-screen grid place-items-center bg-slate-50 dark:bg-slate-950 text-emerald-700"><span className="material-symbols-outlined animate-spin text-3xl">progress_activity</span></div>;
+    }
     return (
       <AuthView
         isDark={isDark}
@@ -648,6 +733,9 @@ export function App() {
         onLoginSuccess={(profile) => {
           setUserProfile(profile);
           setUserRole(profile.role);
+          setStudentThreads(!isSupabaseConfigured && profile.id === INITIAL_USER_PROFILES.student.id ? { 's.jenkins@lasu.edu.ng': INITIAL_CHAT_MESSAGES } : {});
+          setActiveStudentAdviserEmail(profile.role === 'student' ? profile.assignedAdviserEmail || '' : '');
+          setHasNudgeNotice(!profile.hasUploadedTranscript);
           if (profile.role === 'student' || profile.role === 'lecturer') {
             setCurrentTab('dashboard');
           } else if (profile.role === 'hod') {
@@ -672,9 +760,26 @@ export function App() {
   const advisorCohortConversations = userRole === 'lecturer'
     ? (assignedAdviser?.assignedSession ? departmentConversations.filter((c) => c.admissionSession === assignedAdviser.assignedSession && c.level === assignedAdviser.assignedLevel) : [])
     : departmentConversations;
+  const matchedStudentAdviser = advisers.find((adviser) => adviser.email === userProfile.assignedAdviserEmail);
+  const studentAdvisers = userProfile.assignedAdviserEmail
+    ? [matchedStudentAdviser || {
+        id: userProfile.assignedAdviserId || userProfile.assignedAdviserEmail,
+        name: userProfile.assignedAdviserName || 'Assigned Level Adviser',
+        title: userProfile.assignedAdviserTitle || 'Level Adviser',
+        department: userProfile.department,
+        email: userProfile.assignedAdviserEmail,
+        avatarUrl: userProfile.assignedAdviserAvatar || '',
+        assignedLevel: userProfile.level || '',
+        studentLoad: 0,
+        maxLoad: 0,
+        status: 'Available' as const,
+        avgAdviseeCgpa: 0,
+        initials: (userProfile.assignedAdviserName || 'A').slice(0, 2).toUpperCase(),
+      }]
+    : [];
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-emerald-600 selection:text-white transition-colors duration-200">
+    <div className="min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-emerald-600 selection:text-white transition-colors duration-200">
       {/* Toast Notification Container */}
       <div className="fixed top-20 right-4 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
         {toasts.map((toast) => (
@@ -717,7 +822,7 @@ export function App() {
         isOpenMobile={isMobileNavOpen}
         setIsOpenMobile={setIsMobileNavOpen}
         unreadMessagesCount={userRole === 'student'
-          ? conversations.filter((c) => c.studentId === userProfile.id).reduce((acc, c) => acc + (c.studentUnreadCount || 0), 0)
+          ? Object.values(studentThreads).reduce((count, thread) => count + thread.filter((message) => message.sender === 'adviser' && !message.isRead).length, 0)
           : userRole === 'lecturer'
             ? advisorCohortConversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0)
             : 0}
@@ -732,7 +837,7 @@ export function App() {
         searchQuery={globalSearchQuery}
         setSearchQuery={setGlobalSearchQuery}
         onOpenSettings={() => setCurrentTab('settings')}
-        onSignOut={() => setIsAuthenticated(false)}
+        onSignOut={() => { signOutAccount().catch((error) => console.error('Sign out failed', error)).finally(() => { setStudentThreads({}); setActiveStudentAdviserEmail(''); setIsAuthenticated(false); }); }}
         notifications={notifications}
         onClearNotifications={() => setNotifications([])}
         onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
@@ -741,7 +846,7 @@ export function App() {
       />
 
       {/* Main Workspace Body */}
-      <main className={`md:ml-72 pt-20 sm:pt-24 pb-16 ${currentTab === 'messages' || currentTab === 'settings' ? 'px-0 max-w-none' : 'px-3 sm:px-6 md:px-10 max-w-7xl mx-auto'} w-full flex-1`}>
+      <main className={`min-w-0 w-full md:w-[calc(100%-15rem)] md:ml-60 pt-20 sm:pt-24 ${currentTab === 'messages' ? 'pb-0' : 'pb-16'} ${currentTab === 'messages' || currentTab === 'settings' ? 'px-0 max-w-none' : 'px-3 sm:px-6 md:px-10 max-w-7xl mx-auto'} flex-1`}>
         {/* Strict RBAC Access Guard */}
         {!canAccessCurrentTab ? (
           <div className="py-16 text-center space-y-4 max-w-md mx-auto">
@@ -834,17 +939,18 @@ export function App() {
               </>
             )}
 
-            {/* Tab: Advising Messages (Student full-screen view & Adviser/Staff peer-to-peer inbox) */}
+            {/* Messages */}
             {currentTab === 'messages' && (
               <>
                 {userRole === 'student' ? (
                   <StudentMessagingView
                     studentProfile={userProfile}
-                    messages={chatMessages}
+                    advisers={studentAdvisers}
+                    messages={studentThreads[activeStudentAdviserEmail] || (!isSupabaseConfigured && userProfile.id === INITIAL_USER_PROFILES.student.id && activeStudentAdviserEmail === userProfile.assignedAdviserEmail ? chatMessages : [])}
+                    selectedAdviserEmail={activeStudentAdviserEmail}
                     archivedThreads={userProfile.archivedChats || []}
-                    onSendMessage={handleSendMessage}
-                    onOpenBookAppointment={() => setIsBookAppointmentOpen(true)}
-                    onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
+                    onSelectAdviser={handleSelectStudentAdviser}
+                    onSendMessage={(email, text) => handleSendMessage(text, email)}
                   />
                 ) : userRole === 'hod' ? (
                     <div className="min-h-[calc(100vh-7rem)] w-full bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800 p-8">
@@ -853,6 +959,14 @@ export function App() {
                       <div className="mt-6 grid gap-3 sm:grid-cols-2 max-w-2xl">
                         {advisers.filter((a) => a.department === userProfile.department).map((a) => <a key={a.id} href={`mailto:${a.email}`} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-emerald-500"><div className="font-semibold">{a.name}</div><div className="text-xs text-slate-500">Lecturer • {a.department}</div></a>)}
                         <a href={`mailto:${INITIAL_USER_PROFILES.dean.email}`} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-emerald-500"><div className="font-semibold">Dean of the Faculty</div><div className="text-xs text-slate-500">Faculty of Computing &amp; Information Technology</div></a>
+                      </div>
+                    </div>
+                  ) : userRole === 'dean' ? (
+                    <div className="min-h-[calc(100vh-7rem)] w-full bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800 p-6 sm:p-8">
+                      <h1 className="text-2xl font-bold">Messages</h1>
+                      <p className="mt-2 text-sm text-slate-500">Faculty communication with Heads of Department.</p>
+                      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-w-4xl">
+                        {[...new Map(advisers.filter((a) => a.department).map((a) => [a.department, a])).values()].map((adviser) => <a key={adviser.department} href={`mailto:${adviser.email}`} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-emerald-500"><div className="font-semibold">{adviser.department} HOD</div><div className="text-xs text-slate-500">{adviser.department}</div></a>)}
                       </div>
                     </div>
                   ) : <AdviserMessagingView
@@ -994,6 +1108,7 @@ export function App() {
       <TranscriptParserModal
         isOpen={isTranscriptModalOpen}
         onClose={() => setIsTranscriptModalOpen(false)}
+        expectedStudentName={userProfile.name}
         onTranscriptParsed={handleTranscriptParsed}
       />
 

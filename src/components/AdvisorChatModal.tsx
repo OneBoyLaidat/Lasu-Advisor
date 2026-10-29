@@ -22,7 +22,6 @@ export const AdvisorChatModal: React.FC<AdvisorChatModalProps> = ({
   targetPersonRole,
 }) => {
   const [inputText, setInputText] = useState('');
-  const [draftNotice, setDraftNotice] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -66,24 +65,6 @@ export const AdvisorChatModal: React.FC<AdvisorChatModalProps> = ({
     if (!inputText.trim()) return;
     onSendMessage(inputText.trim());
     setInputText('');
-    setDraftNotice(null);
-  };
-
-  const sampleDraftTemplates = isStudent
-    ? [
-        'Request review of CSC418 prerequisite standing',
-        'Inquiry regarding course waiver submission',
-        'Academic advising calendar consultation',
-      ]
-    : [
-        'I have reviewed your academic record and prerequisites.',
-        'Please schedule an advising slot to finalize elective choices.',
-        'Ensure your course registration slip is uploaded before the deadline.',
-      ];
-
-  const handleSelectTemplate = (template: string) => {
-    setInputText(template);
-    setDraftNotice('Template inserted into draft. Edit and press Send to deliver.');
   };
 
   return (
@@ -163,7 +144,7 @@ export const AdvisorChatModal: React.FC<AdvisorChatModalProps> = ({
                     <span className="text-[9px] text-slate-400 dark:text-slate-500">{m.timestamp}</span>
                   </div>
                   <div
-                    className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
+                    className={`max-w-[82%] break-words [overflow-wrap:anywhere] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
                       isMine
                         ? 'bg-emerald-600 text-white font-medium rounded-br-none shadow-2xs'
                         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-bl-none border border-slate-200 dark:border-slate-700 shadow-2xs'
@@ -175,33 +156,6 @@ export const AdvisorChatModal: React.FC<AdvisorChatModalProps> = ({
               );
             })
           )}
-        </div>
-
-        {/* Draft Notice if template clicked */}
-        {draftNotice && (
-          <div className="px-4 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-[11px] border-t border-emerald-200 dark:border-emerald-800/80 flex items-center justify-between">
-            <span>{draftNotice}</span>
-            <button
-              onClick={() => setDraftNotice(null)}
-              className="text-emerald-700 dark:text-emerald-400 hover:underline text-[10px]"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Quick Draft Prompts */}
-        <div className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700 flex gap-1.5 overflow-x-auto text-[11px]">
-          {sampleDraftTemplates.map((template, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handleSelectTemplate(template)}
-              className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-600 text-[10px] font-medium transition-colors shadow-2xs cursor-pointer"
-            >
-              {template}
-            </button>
-          ))}
         </div>
 
         {/* Input Footer */}

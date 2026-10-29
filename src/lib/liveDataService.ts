@@ -1,0 +1,274 @@
+import { User } from '@supabase/supabase-js';
+import { CourseResult, UserProfile, UserRole } from '../types';
+import { AuthResult, authenticateUser, registerNewUser } from './authService';
+import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
+
+type ProfileRow = {
+  user_id: string;
+  full_name: string;
+  email: string;
+  role: UserRole;
+  department: string;
+  faculty: string;
+  matric_no?: string | null;
+  staff_id?: string | null;
+  level?: string | null;
+  admission_session?: string | null;
+  avatar_url?: string | null;
+  phone?: string | null;
+  has_uploaded_transcript?: boolean | null;
+  transcript_file_name?: string | null;
+};
+
+const profileFromRow = (row: ProfileRow): UserProfile => ({
+  id: row.user_id,
+  name: row.full_name,
+  email: row.email,
+  role: row.role,
+  department: row.department,
+  faculty: row.faculty,
+  matricNo: row.matric_no || undefined,
+  staffId: row.staff_id || undefined,
+  level: row.level || undefined,
+  admissionSession: row.admission_session || undefined,
+  avatarUrl: row.avatar_url || '',
+  phone: row.phone || undefined,
+  hasUploadedTranscript: row.has_uploaded_transcript || false,
+  transcriptFileName: row.transcript_file_name || undefined,
+});
+
+const profileToRow = (profile: UserProfile) => ({
+  user_id: profile.id,
+  full_name: profile.name,
+  email: profile.email,
+  role: profile.role,
+  department: profile.department,
+  faculty: profile.faculty,
+  matric_no: profile.matricNo || null,
+  staff_id: profile.staffId || null,
+  level: profile.level || null,
+  admission_session: profile.admissionSession || null,
+  avatar_url: profile.avatarUrl || null,
+  phone: profile.phone || null,
+  has_uploaded_transcript: profile.hasUploadedTranscript || false,
+  transcript_file_name: profile.transcriptFileName || null,
+});
+
+async function getProfileForUser(user: User): Promise<UserProfile | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data, error } = await client.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const profile = profileFromRow(data as ProfileRow);
+  if (profile.role === 'student' && profile.admissionSession && profile.level) {
+    const { data: assignment, error: assignmentError } = await client.from('adviser_assignments').select('adviser_id').eq('department', profile.department).eq('admission_session', profile.admissionSession).eq('level', profile.level).maybeSingle();
+    if (assignmentError) throw assignmentError;
+    if (assignment) {
+      const { data: adviser, error: adviserError } = await client.from('profiles').select('full_name,email,avatar_url,department').eq('user_id', assignment.adviser_id).maybeSingle();
+      if (adviserError) throw adviserError;
+      if (adviser) {
+        profile.assignedAdviserId = assignment.adviser_id;
+        profile.assignedAdviserName = adviser.full_name;
+        profile.assignedAdviserEmail = adviser.email;
+        profile.assignedAdviserAvatar = adviser.avatar_url || undefined;
+        profile.assignedAdviserTitle = `Level Adviser, ${adviser.department}`;
+      }
+    }
+  }
+  return profile;
+}
+
+export async function signInAccount(identifier: string, password: string): Promise<AuthResult> {
+  if (!isSupabaseConfigured) return authenticateUser(identifier, password);
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+  if (!identifier.includes('@')) return { success: false, error: 'Use the email address on your LASU Advisor account to sign in.' };
+  const { data, error } = await client.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password });
+  if (error) return { success: false, error: error.message };
+  try {
+    const profile = await getProfileForUser(data.user);
+    return profile ? { success: true, profile } : { success: false, error: 'Your account is signed in, but its profile is not set up. Contact your faculty administrator.' };
+  } catch (profileError) {
+    await client.auth.signOut();
+    return { success: false, error: profileError instanceof Error ? profileError.message : 'Could not load your profile.' };
+  }
+}
+
+export async function signUpAccount(data: Parameters<typeof registerNewUser>[0]): Promise<AuthResult & { confirmationRequired?: boolean }> {
+  if (!isSupabaseConfigured) return registerNewUser(data);
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+  if (data.role !== 'student') return { success: false, error: 'Staff accounts are provisioned by faculty administrators. Please request an invitation.' };
+  const { data: result, error } = await client.auth.signUp({
+    email: data.email.trim().toLowerCase(),
+    password: data.password,
+    options: { data: {
+      full_name: data.name.trim(),
+      department: data.department,
+      faculty: data.faculty,
+      matric_no: data.matricNo,
+      level: data.level,
+      admission_session: data.admissionSession,
+    } },
+  });
+  if (error) return { success: false, error: error.message };
+  if (!result.session) return { success: true, confirmationRequired: true };
+  try {
+    const profile = await getProfileForUser(result.user);
+    return profile ? { success: true, profile } : { success: false, error: 'Account created, but profile setup has not completed. Try signing in again shortly.' };
+  } catch (profileError) {
+    return { success: false, error: profileError instanceof Error ? profileError.message : 'Could not create your profile.' };
+  }
+}
+
+export async function getCurrentProfile(): Promise<UserProfile | null> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return null;
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  return data.session ? getProfileForUser(data.session.user) : null;
+}
+
+export async function signOutAccount(): Promise<void> {
+  const client = getSupabaseClient();
+  if (client && isSupabaseConfigured) {
+    const { error } = await client.auth.signOut();
+    if (error) throw error;
+  }
+}
+
+export async function getAccessToken(): Promise<string | null> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return null;
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  return data.session?.access_token || null;
+}
+
+export async function persistUserProfile(profile: UserProfile): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return;
+  const { error } = await client.from('profiles').update(profileToRow(profile)).eq('user_id', profile.id);
+  if (error) throw error;
+}
+
+export async function persistAdviserAssignment(adviserId: string, department: string, admissionSession: string, level: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return;
+  const { data: adviser, error: profileError } = await client.from('profiles').select('user_id').eq('email', adviserId).eq('role', 'lecturer').eq('department', department).maybeSingle();
+  if (profileError) throw profileError;
+  if (!adviser) throw new Error('Select an active lecturer in your department.');
+  const { error } = await client.from('adviser_assignments').upsert({ adviser_id: adviser.user_id, department, admission_session: admissionSession, level }, { onConflict: 'department,admission_session,level' });
+  if (error) throw error;
+}
+
+export async function persistTranscript(
+  profile: UserProfile,
+  courses: CourseResult[],
+  cgpa: number,
+  fileName: string,
+  file?: File
+): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return;
+  let filePath: string | null = null;
+  if (file) {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    filePath = `${profile.id}/${Date.now()}-${safeName}`;
+    const { error: uploadError } = await client.storage.from('result-documents').upload(filePath, file, { contentType: 'application/pdf', upsert: false });
+    if (uploadError) throw uploadError;
+  }
+  const { error } = await client.from('student_results').insert({
+    user_id: profile.id,
+    file_name: fileName,
+    file_path: filePath,
+    document_student_name: profile.name,
+    courses,
+    cgpa,
+  });
+  if (error) {
+    if (filePath) await client.storage.from('result-documents').remove([filePath]);
+    throw error;
+  }
+  const { error: profileError } = await client.from('profiles').update({
+    has_uploaded_transcript: true,
+    transcript_file_name: fileName,
+  }).eq('user_id', profile.id);
+  if (profileError) throw profileError;
+}
+
+export async function loadLatestTranscript(userId: string): Promise<{ courses: CourseResult[]; cgpa: number; fileName: string } | null> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return null;
+  const { data, error } = await client.from('student_results').select('courses,cgpa,file_name').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw error;
+  return data ? { courses: data.courses as CourseResult[], cgpa: Number(data.cgpa), fileName: String(data.file_name) } : null;
+}
+
+export async function persistDirectMessage(input: {
+  senderId: string;
+  recipientEmail: string;
+  body: string;
+  threadKey: string;
+}): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return;
+  const { data: recipient, error: recipientError } = await client.from('profiles').select('user_id').eq('email', input.recipientEmail).maybeSingle();
+  if (recipientError) throw recipientError;
+  if (!recipient) throw new Error('This adviser does not have an active messaging account yet.');
+  const { error } = await client.from('messages').insert({
+    sender_id: input.senderId,
+    recipient_id: recipient.user_id,
+    body: input.body,
+    thread_key: input.threadKey,
+  });
+  if (error) throw error;
+}
+
+export async function loadDirectMessages(userId: string): Promise<Array<{ email: string; message: { id: string; sender: 'student' | 'adviser'; senderName: string; text: string; timestamp: string; isRead?: boolean }; threadKey: string }>> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return [];
+  const { data: rows, error } = await client.from('messages').select('id,sender_id,recipient_id,body,thread_key,created_at,read_at').or(`sender_id.eq.${userId},recipient_id.eq.${userId}`).order('created_at', { ascending: true });
+  if (error) throw error;
+  if (!rows?.length) return [];
+  const otherIds = [...new Set(rows.map((row) => row.sender_id === userId ? row.recipient_id : row.sender_id))];
+  const { data: profiles, error: profileError } = await client.from('profiles').select('user_id,email,full_name').in('user_id', otherIds);
+  if (profileError) throw profileError;
+  const byId = new Map((profiles || []).map((profile) => [profile.user_id, profile]));
+  return rows.flatMap((row) => {
+    const otherId = row.sender_id === userId ? row.recipient_id : row.sender_id;
+    const contact = byId.get(otherId);
+    if (!contact) return [];
+    return [{
+      email: contact.email,
+      threadKey: row.thread_key,
+      message: {
+        id: String(row.id),
+        sender: row.sender_id === userId ? 'student' as const : 'adviser' as const,
+        senderName: row.sender_id === userId ? 'Student' : contact.full_name,
+        text: row.body,
+        timestamp: new Date(row.created_at).toLocaleString(),
+        isRead: Boolean(row.read_at),
+      },
+    }];
+  });
+}
+
+export async function markDirectMessagesRead(userId: string, senderEmail: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return;
+  const { data: sender, error: profileError } = await client.from('profiles').select('user_id').eq('email', senderEmail).maybeSingle();
+  if (profileError) throw profileError;
+  if (!sender) return;
+  const { error } = await client.from('messages').update({ read_at: new Date().toISOString() }).eq('sender_id', sender.user_id).eq('recipient_id', userId).is('read_at', null);
+  if (error) throw error;
+}
+
+export async function sendPasswordReset(email: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) throw new Error('Password recovery is available for live accounts only. Contact an administrator for demo credentials.');
+  if (!email.includes('@')) throw new Error('Enter the email address associated with your account first.');
+  const { error } = await client.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: `${window.location.origin}/#login` });
+  if (error) throw error;
+}

@@ -1,4 +1,8 @@
 import { CourseResult } from '../types';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 export interface ParsedTranscriptCourse extends CourseResult {
   isMissingCode?: boolean;
@@ -60,146 +64,51 @@ export const getDegreeClass = (cgpa: number): string => {
  * Handles raw PDF streams, text tokens, ASCII sequences, and plain text.
  */
 export async function extractTextFromFile(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        let cleanText = result;
-        // If PDF stream syntax
-        if (result.includes('%PDF')) {
-          // Extract text literals from PDF syntax (Tj, TJ blocks and parenthesis tokens)
-          const textMatches = result.match(/\(([^)]+)\)|\[([^\]]+)\]/g);
-          if (textMatches && textMatches.length > 0) {
-            const extracted = textMatches
-              .map((m) => m.replace(/[()[\]]/g, ''))
-              .filter((t) => t.trim().length > 1)
-              .join(' ');
-            if (extracted.trim().length > 20) {
-              cleanText += '\n' + extracted;
-            }
-          }
-
-          // Extract ASCII chunks of 3 or more alphanumeric characters
-          const asciiWords = result.match(/[A-Za-z0-9_.\- /]{3,}/g);
-          if (asciiWords && asciiWords.length > 5) {
-            cleanText += '\n' + asciiWords.join(' ');
-          }
-        }
-        resolve(cleanText);
-      } else {
-        resolve('');
+  if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+    throw new Error('Please upload a PDF result document.');
+  }
+  const document = await getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  try {
+    const pages: string[] = [];
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      const positioned = content.items
+        .flatMap((item) => 'str' in item && 'transform' in item
+          ? [{ text: item.str.trim(), x: item.transform[4], y: item.transform[5] }]
+          : [])
+        .filter((item) => item.text.length > 0)
+        .sort((a, b) => b.y - a.y || a.x - b.x);
+      const lines: Array<{ y: number; items: typeof positioned }> = [];
+      for (const item of positioned) {
+        const row = lines.find((candidate) => Math.abs(candidate.y - item.y) < 2.5);
+        if (row) row.items.push(item);
+        else lines.push({ y: item.y, items: [item] });
       }
-    };
-
-    reader.onerror = () => {
-      resolve('');
-    };
-
-    reader.readAsText(file);
-  });
+      pages.push(lines.map((line) => line.items.sort((a, b) => a.x - b.x).map((item) => item.text).join(' ')).join('\n'));
+    }
+    return pages.join('\n\n').trim();
+  } finally {
+    await document.destroy();
+  }
 }
 
-// Fallback authentic LASU semester courses for image/raster PDFs
-const FALLBACK_LASU_SEMESTER_COURSES: ParsedTranscriptCourse[] = [
-  {
-    code: 'CSC301',
-    title: 'Data Structures & Algorithms',
-    units: 3,
-    grade: 'A',
-    score: 82,
-    status: 'Passed',
-    semester: 'Fall 2024',
-    academicYear: '2024/2025',
-    gpPoints: 15,
-    isMissingCode: false,
-    isMissingTitle: false,
-    isMissingUnits: false,
-    isMissingScore: false,
-    isMissingGrade: false,
-  },
-  {
-    code: 'CSC303',
-    title: 'Database Management Systems',
-    units: 3,
-    grade: 'A',
-    score: 76,
-    status: 'Passed',
-    semester: 'Fall 2024',
-    academicYear: '2024/2025',
-    gpPoints: 15,
-    isMissingCode: false,
-    isMissingTitle: false,
-    isMissingUnits: false,
-    isMissingScore: false,
-    isMissingGrade: false,
-  },
-  {
-    code: 'CSC305',
-    title: 'Operating Systems & Architecture',
-    units: 3,
-    grade: 'B',
-    score: 68,
-    status: 'Passed',
-    semester: 'Fall 2024',
-    academicYear: '2024/2025',
-    gpPoints: 12,
-    isMissingCode: false,
-    isMissingTitle: false,
-    isMissingUnits: false,
-    isMissingScore: false,
-    isMissingGrade: false,
-  },
-  {
-    code: 'MTH301',
-    title: 'Discrete Mathematics & Logic',
-    units: 3,
-    grade: 'B',
-    score: 64,
-    status: 'Passed',
-    semester: 'Fall 2024',
-    academicYear: '2024/2025',
-    gpPoints: 12,
-    isMissingCode: false,
-    isMissingTitle: false,
-    isMissingUnits: false,
-    isMissingScore: false,
-    isMissingGrade: false,
-  },
-  {
-    code: 'GNS311',
-    title: 'Entrepreneurship & Innovation',
-    units: 2,
-    grade: 'A',
-    score: 78,
-    status: 'Passed',
-    semester: 'Fall 2024',
-    academicYear: '2024/2025',
-    gpPoints: 10,
-    isMissingCode: false,
-    isMissingTitle: false,
-    isMissingUnits: false,
-    isMissingScore: false,
-    isMissingGrade: false,
-  },
-  {
-    code: 'CSC307',
-    title: 'Software Engineering Methodologies',
-    units: 3,
-    grade: 'A',
-    score: 74,
-    status: 'Passed',
-    semester: 'Fall 2024',
-    academicYear: '2024/2025',
-    gpPoints: 15,
-    isMissingCode: false,
-    isMissingTitle: false,
-    isMissingUnits: false,
-    isMissingScore: false,
-    isMissingGrade: false,
-  },
-];
+export async function extractTextFromScannedPdf(file: File, accessToken: string): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
+  }
+  const response = await fetch('/api/ocr/transcript', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ pdfBase64: btoa(binary) }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Scanned PDF OCR could not be completed.');
+  return String(result.transcriptText || '');
+}
 
 /**
  * Parses raw extracted text from a PDF transcript using OCR heuristics.
@@ -335,12 +244,13 @@ export function parseTranscriptText(rawText: string, fileName: string): ParsedTr
     }
   }
 
-  // If no legible text stream could be parsed (e.g. rasterized scan or encrypted binary PDF),
-  // accurately populate with verified LASU semester course results
-  const finalCourses = courses.length > 0 ? courses : FALLBACK_LASU_SEMESTER_COURSES;
+  const nameLine = lines.find((line) => /^(?:student\s*name|name\s*of\s*student|full\s*name)\s*[:\-]/i.test(line));
+  const studentName = nameLine?.replace(/^(?:student\s*name|name\s*of\s*student|full\s*name)\s*[:\-]\s*/i, '').trim();
+  const matricLine = lines.find((line) => /^(?:matric(?:ulation)?\s*(?:no\.?|number)?|student\s*id)\s*[:\-]/i.test(line));
+  const matricNo = matricLine?.replace(/^(?:matric(?:ulation)?\s*(?:no\.?|number)?|student\s*id)\s*[:\-]\s*/i, '').trim();
 
   // Calculate summary metrics ONLY from validly extracted course data
-  const validCourses = finalCourses.filter((c) => !c.isMissingUnits && !c.isMissingScore && c.units > 0 && c.grade !== '-');
+  const validCourses = courses.filter((c) => !c.isMissingUnits && !c.isMissingScore && c.units > 0 && c.grade !== '-');
   const totalUnits = validCourses.reduce((acc, c) => acc + c.units, 0);
   const passedUnits = validCourses
     .filter((c) => c.status === 'Passed')
@@ -350,15 +260,17 @@ export function parseTranscriptText(rawText: string, fileName: string): ParsedTr
   const gpa = totalUnits > 0 ? parseFloat((totalGradePoints / totalUnits).toFixed(2)) : 0;
   const cgpa = gpa;
 
-  const hasMissingFields = courses.length > 0 && missingFieldCount > 0;
-  const ocrConfidence: 'high' | 'partial' | 'low' = hasMissingFields ? 'partial' : 'high';
+  const hasMissingFields = courses.length === 0 || missingFieldCount > 0;
+  const ocrConfidence: 'high' | 'partial' | 'low' = courses.length === 0 ? 'low' : hasMissingFields ? 'partial' : 'high';
   const extractionMessage =
     courses.length > 0
       ? 'All course records successfully extracted from uploaded PDF document.'
-      : 'Document OCR processed: official LASU Computer Science semester course records verified.';
+      : 'No selectable text was found in this PDF. Upload a text-based result PDF or enter the result details manually.';
 
   return {
-    courses: finalCourses,
+    studentName,
+    matricNo,
+    courses,
     totalUnits,
     passedUnits,
     carryoverUnits,

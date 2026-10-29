@@ -39,7 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header
       id="top-header"
-      className="fixed top-0 right-0 w-full md:w-[calc(100%-18rem)] h-16 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs flex justify-between items-center px-4 md:px-8 z-40 transition-colors duration-200"
+      className="fixed top-0 right-0 w-full md:w-[calc(100%-15rem)] h-16 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs flex justify-between items-center px-4 md:px-6 z-40 transition-colors duration-200"
     >
       {/* Left side: Hamburger + Title */}
       <div className="flex items-center gap-3 md:gap-4">

@@ -48,13 +48,6 @@ export const AdviserMessagingView: React.FC<AdviserMessagingViewProps> = ({
     setReplyText('');
   };
 
-  const sampleAdviserTemplates = [
-    'I have reviewed your academic record and your prerequisite standing is in order.',
-    'Please schedule a 15-minute consultation via the advising calendar so we can review your course selections.',
-    'Please ensure your verified result slip is uploaded to resolve the missing record alert.',
-    'Your final year project synopsis has been noted and forwarded to the departmental coordinator.',
-  ];
-
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
       {/* View Header */}
@@ -334,7 +327,7 @@ export const AdviserMessagingView: React.FC<AdviserMessagingViewProps> = ({
                           <span>{m.timestamp}</span>
                         </div>
                         <div
-                          className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
+                          className={`max-w-[85%] sm:max-w-[75%] break-words [overflow-wrap:anywhere] rounded-2xl px-4 py-2.5 text-xs leading-relaxed ${
                             isFromAdviser
                               ? 'bg-emerald-600 text-white font-medium rounded-br-none shadow-2xs'
                               : 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 rounded-bl-none border border-slate-200 dark:border-slate-700 shadow-2xs'
@@ -346,20 +339,6 @@ export const AdviserMessagingView: React.FC<AdviserMessagingViewProps> = ({
                     );
                   })
                 )}
-              </div>
-
-              {/* Quick Template Prompts for Adviser */}
-              <div className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-700 flex gap-1.5 overflow-x-auto text-[11px]">
-                {sampleAdviserTemplates.map((template, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setReplyText(template)}
-                    className="whitespace-nowrap px-2.5 py-1 rounded-full bg-white dark:bg-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-slate-700 dark:text-slate-200 hover:text-emerald-700 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-600 text-[10px] font-medium transition-colors shadow-2xs cursor-pointer"
-                  >
-                    {template}
-                  </button>
-                ))}
               </div>
 
               {/* Reply Input Form */}

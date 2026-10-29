@@ -19,8 +19,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onThemeModeChange,
 }) => {
   const [name, setName] = useState(userProfile.name);
-  const [email, setEmail] = useState(userProfile.email);
-  const [phone, setPhone] = useState(userProfile.phone || '+234 803 456 7890');
+  const email = userProfile.email;
+  const [phone, setPhone] = useState(userProfile.phone || '');
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -47,7 +47,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 items-stretch">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 min-h-0 items-stretch">
         {/* Profile Card */}
         <div className="md:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col items-center text-center shadow-xs">
           <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-600 dark:border-emerald-500 p-1 mb-3 bg-slate-50 dark:bg-slate-800">
@@ -70,8 +70,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {userProfile.matricNo || userProfile.staffId || '—'}
               </span>
             </div>
-            {userProfile.role === 'student' && userProfile.session && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Admission Session:</span><span className="font-semibold text-slate-800 dark:text-slate-200">{userProfile.session}</span></div>}
+            {userProfile.role === 'student' && userProfile.admissionSession && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Admission Session:</span><span className="font-semibold text-slate-800 dark:text-slate-200">{userProfile.admissionSession}</span></div>}
+            {userProfile.role === 'student' && userProfile.level && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Academic Level:</span><span className="font-semibold text-slate-800 dark:text-slate-200">{userProfile.level}</span></div>}
             {userProfile.role !== 'student' && userProfile.staffId && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Staff ID:</span><span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{userProfile.staffId}</span></div>}
+            {userProfile.role !== 'student' && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Faculty:</span><span className="font-semibold text-slate-800 dark:text-slate-200">{userProfile.faculty || '—'}</span></div>}
           </div>
         </div>
 
@@ -99,8 +101,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs"
+                  readOnly
+                  aria-readonly="true"
+                  className="w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-500 dark:text-slate-400 shadow-2xs"
                 />
               </div>
 

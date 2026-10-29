@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { GoogleGenAI } from '@google/genai';
 
 /**
  * LASU Advisor - Dedicated Node.js (Express) Backend Server
@@ -15,12 +17,64 @@ async function startServer() {
   const PORT = 3000;
 
   // Middleware for JSON body parsing and URL encoding
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use(express.json({ limit: '20mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
   // =========================================================================
   // BACKEND API ROUTES (/api/*)
   // =========================================================================
+
+  app.post('/api/ocr/transcript', async (req: Request, res: Response) => {
+    try {
+      const token = req.header('authorization')?.replace(/^Bearer\s+/i, '');
+      const supabaseUrl = process.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY;
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!token || !supabaseUrl || !supabaseAnonKey) return res.status(401).json({ error: 'Sign in to run OCR on a scanned transcript.' });
+      const identity = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
+        headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` },
+      });
+      if (!identity.ok) return res.status(401).json({ error: 'Your session expired. Sign in again and retry.' });
+      const authenticatedUser = await identity.json() as { id?: string };
+      const roleCheck = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/profiles?user_id=eq.${encodeURIComponent(authenticatedUser.id || '')}&select=role`, {
+        headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${token}` },
+      });
+      if (!roleCheck.ok) return res.status(403).json({ error: 'Your account could not be verified for transcript upload.' });
+      const roleRows = await roleCheck.json() as Array<{ role?: string }>;
+      if (roleRows[0]?.role !== 'student') return res.status(403).json({ error: 'Transcript OCR is available to student accounts only.' });
+      if (!apiKey) return res.status(503).json({ error: 'Scanned PDF OCR is not configured. Add GEMINI_API_KEY to the server environment.' });
+
+      const pdfBase64 = typeof req.body?.pdfBase64 === 'string' ? req.body.pdfBase64 : '';
+      if (!pdfBase64 || pdfBase64.length > 17_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(pdfBase64)) {
+        return res.status(400).json({ error: 'The PDF is empty, invalid, or larger than the 12 MB OCR limit.' });
+      }
+      const pdfBytes = Buffer.from(pdfBase64, 'base64');
+      if (pdfBytes.subarray(0, 4).toString() !== '%PDF') return res.status(400).json({ error: 'The uploaded file is not a valid PDF.' });
+
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: [
+          { text: 'Read this LASU student result PDF. Transcribe only information visibly present in the document. Do not infer, complete, or invent values. Return only valid JSON with keys studentName (string or null), matricNo (string or null), courses (array of objects with code, title, units, score, grade; use null when unreadable). Include a course only if its course code is visible. Preserve the printed student name exactly.' },
+          { inlineData: { mimeType: 'application/pdf', data: pdfBase64 } },
+        ],
+      });
+      const responseText = response.text || '';
+      const jsonText = responseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+      const extracted = JSON.parse(jsonText) as { studentName?: string | null; matricNo?: string | null; courses?: Array<{ code?: string | null; title?: string | null; units?: number | null; score?: number | null; grade?: string | null }> };
+      const lines: string[] = [];
+      if (extracted.studentName) lines.push(`Student Name: ${extracted.studentName}`);
+      if (extracted.matricNo) lines.push(`Matric No: ${extracted.matricNo}`);
+      for (const course of extracted.courses || []) {
+        if (!course.code || !/^[A-Z]{3}\s?\d{3}$/i.test(course.code)) continue;
+        lines.push([course.code, course.title || '', course.units ?? '', course.score ?? '', course.grade || ''].join(' '));
+      }
+      return res.json({ transcriptText: lines.join('\n') });
+    } catch (error) {
+      console.error('[LASU Advisor] Transcript OCR failed:', error);
+      return res.status(502).json({ error: 'The scanned result could not be read. Try a clearer PDF or enter the result details manually.' });
+    }
+  });
 
   // 1. Health & Tech Stack Status Route
   app.get('/api/health', (_req: Request, res: Response) => {

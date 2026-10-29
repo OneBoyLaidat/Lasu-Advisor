@@ -11,7 +11,7 @@ interface AssignAdvisorModalProps {
     level: string,
     session: string,
     notes?: string
-  ) => void;
+  ) => void | Promise<void>;
   selectedAdviser?: Adviser;
 }
 
@@ -26,15 +26,25 @@ export const AssignAdvisorModal: React.FC<AssignAdvisorModalProps> = ({
   const [level, setLevel] = useState(selectedAdviser?.assignedLevel || '300 Level');
   const [session, setSession] = useState(selectedAdviser?.assignedSession || '2025/2026');
   const [adminNotes, setAdminNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   if (!isOpen) return null;
 
   const currentAdv = advisers.find((a) => a.id === adviserId) || advisers[0];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSaveAssignment(adviserId, level, session, adminNotes);
-    onClose();
+    setIsSaving(true);
+    setSaveError('');
+    try {
+      await onSaveAssignment(adviserId, level, session, adminNotes);
+      onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save the adviser assignment.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -176,12 +186,14 @@ export const AssignAdvisorModal: React.FC<AssignAdvisorModalProps> = ({
           </div>
 
           <div className="pt-2">
+            {saveError && <p role="alert" className="mb-2 text-xs text-rose-700 dark:text-rose-300">{saveError}</p>}
             <button
               type="submit"
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              disabled={isSaving}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">how_to_reg</span>
-              Assign Adviser to {session} Cohort
+              {isSaving ? 'Saving assignment…' : `Assign Adviser to ${session} Cohort`}
             </button>
           </div>
         </form>

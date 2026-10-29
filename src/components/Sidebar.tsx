@@ -83,13 +83,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Main Sidebar */}
       <nav
         id="sidebar-nav"
-        className={`fixed left-0 top-0 h-screen w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm flex flex-col py-6 z-50 transition-all duration-300 ${
+        className={`fixed left-0 top-0 h-screen w-60 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-sm flex flex-col py-4 z-50 transition-all duration-300 ${
           isOpenMobile ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
         {/* Header / Logo Area */}
-        <div className="px-6 mb-6 flex flex-col items-center text-center">
-          <div className="w-14 h-14 rounded-full overflow-hidden mb-3 border border-slate-200 dark:border-slate-700 shadow-sm bg-slate-50 dark:bg-slate-800 p-1 flex items-center justify-center">
+        <div className="px-5 mb-4 flex flex-col items-center text-center">
+          <div className="w-11 h-11 rounded-full overflow-hidden mb-2 border border-slate-200 dark:border-slate-700 shadow-sm bg-slate-50 dark:bg-slate-800 p-1 flex items-center justify-center">
             <img
               src={OFFICIAL_LOGO_URL}
               alt="LASU Advisor Logo"
@@ -120,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Navigation Items (Strictly filtered by RBAC) */}
-        <div className="flex flex-col gap-1 px-3.5 flex-grow overflow-y-auto">
+        <div className="flex flex-col gap-0.5 px-2.5 flex-grow overflow-y-auto">
           <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 px-3 py-1">
             Menu Navigation
           </span>
@@ -131,14 +131,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={item.id}
                 id={`nav-${item.id}`}
                 onClick={() => handleNavClick(item.id)}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all text-left ${
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all text-left ${
                   isActive
                     ? 'text-emerald-700 dark:text-emerald-300 font-semibold bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/60 shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white'
                 }`}
               >
                 <span
-                  className={`material-symbols-outlined text-[20px] ${
+                  className={`material-symbols-outlined text-[18px] ${
                     isActive ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'
                   }`}
                   style={{

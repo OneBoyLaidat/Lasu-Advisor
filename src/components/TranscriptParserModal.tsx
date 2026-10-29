@@ -1,5 +1,4 @@
 import React, { useState, useRef } from 'react';
-import confetti from 'canvas-confetti';
 import { CourseResult } from '../types';
 import {
   ParsedTranscriptData,
@@ -8,97 +7,73 @@ import {
   getDegreeClass,
   parseTranscriptText,
   extractTextFromFile,
+  extractTextFromScannedPdf,
 } from '../lib/ocrTranscriptParser';
+import { getAccessToken } from '../lib/liveDataService';
 
 interface TranscriptParserModalProps {
   isOpen: boolean;
   onClose: () => void;
+  expectedStudentName: string;
   onTranscriptParsed: (
     courses: CourseResult[],
     cgpa: number,
     totalUnits: number,
     passedUnits: number,
     carryoverUnits: number,
-    fileName: string
-  ) => void;
+    fileName: string,
+    file?: File
+  ) => void | Promise<void>;
 }
 
 export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
   isOpen,
   onClose,
+  expectedStudentName,
   onTranscriptParsed,
 }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [scanStep, setScanStep] = useState<string>('');
   const [dragOver, setDragOver] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<ParsedTranscriptData | null>(null);
   const [activeTab, setActiveTab] = useState<'upload' | 'extracted'>('upload');
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const normalizeName = (value: string) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   if (!isOpen) return null;
 
   const handleFileUpload = async (file: File) => {
+    if (file.size > 12 * 1024 * 1024) {
+      setValidationError('PDF must be 12 MB or smaller.');
+      return;
+    }
+    setUploadedFile(file);
     setUploadedFileName(file.name);
     setIsScanning(true);
     setValidationError(null);
-    setScanStep('Initializing OCR Engine & parsing text stream from PDF...');
-
-    setTimeout(() => {
-      setScanStep('Analyzing document structure: Targeting Code, Title, Unit, Score, and Grade...');
-    }, 500);
-
-    setTimeout(() => {
-      setScanStep('Validating character streams against LASU NUC 5.0 grading rules...');
-    }, 1100);
-
-    // Extract actual file text
-    const extractedText = await extractTextFromFile(file);
-
-    setTimeout(() => {
-      setIsScanning(false);
-      // Strictly parse only text present in the document
+    setParsedData(null);
+    setScanStep('Reading PDF pages and extracting transcript text...');
+    try {
+      let extractedText = await extractTextFromFile(file);
+      if (!extractedText) {
+        const token = await getAccessToken();
+        if (token) {
+          setScanStep('This PDF is scanned. Running secure document OCR...');
+          extractedText = await extractTextFromScannedPdf(file, token);
+        }
+      }
       const result = parseTranscriptText(extractedText, file.name);
       setParsedData(result);
       setActiveTab('extracted');
-
-      // Instant automatic extraction directly to records table
-      if (result.courses.length > 0) {
-        const cleanCourses: CourseResult[] = result.courses.map((c) => ({
-          code: c.code.trim().toUpperCase(),
-          title: c.title.trim() || `${c.code.trim().toUpperCase()} Course Unit`,
-          units: c.units,
-          grade: c.grade,
-          score: c.score,
-          status: c.status,
-          semester: c.semester,
-          academicYear: c.academicYear,
-          gpPoints: c.gpPoints,
-        }));
-
-        onTranscriptParsed(
-          cleanCourses,
-          result.cgpa,
-          result.totalUnits,
-          result.passedUnits,
-          result.carryoverUnits,
-          file.name
-        );
-      }
-
-      if (result.courses.length > 0 && !result.hasMissingFields) {
-        try {
-          confetti({
-            particleCount: 50,
-            spread: 60,
-            origin: { y: 0.6 },
-          });
-        } catch (err) {
-          // ignore
-        }
-      }
-    }, 1200);
+      if (!extractedText) setValidationError('No readable text was found. Sign in to use scanned-PDF OCR, upload a clearer PDF, or enter course records manually.');
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : 'Could not read this PDF. Please try another file.');
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const handleAddCourseManually = () => {
@@ -257,8 +232,22 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
     };
   };
 
-  const handleApplyToProfile = () => {
+  const handleApplyToProfile = async () => {
     if (!parsedData) return;
+
+    if (!uploadedFile) {
+      setValidationError('Upload the official PDF result before saving these records.');
+      return;
+    }
+
+    if (!parsedData.studentName?.trim()) {
+      setValidationError('The student name could not be verified from the document. Upload a clearer PDF before saving.');
+      return;
+    }
+    if (normalizeName(parsedData.studentName) !== normalizeName(expectedStudentName)) {
+      setValidationError(`The document name “${parsedData.studentName}” does not match the signed-in profile name “${expectedStudentName}”. Verify that you selected the correct result slip.`);
+      return;
+    }
 
     if (parsedData.courses.length === 0) {
       setValidationError('Please add at least one course record before saving.');
@@ -289,15 +278,20 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       gpPoints: c.gpPoints,
     }));
 
-    onTranscriptParsed(
-      cleanCourses,
-      parsedData.cgpa,
-      parsedData.totalUnits,
-      parsedData.passedUnits,
-      parsedData.carryoverUnits,
-      parsedData.fileName || uploadedFileName || 'LASU_Transcript_OCR.pdf'
-    );
-    onClose();
+    try {
+      await onTranscriptParsed(
+        cleanCourses,
+        parsedData.cgpa,
+        parsedData.totalUnits,
+        parsedData.passedUnits,
+        parsedData.carryoverUnits,
+        parsedData.fileName || uploadedFileName || 'LASU_Transcript.pdf',
+        uploadedFile || undefined
+      );
+      onClose();
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : 'Could not save this result. Please try again.');
+    }
   };
 
   return (
@@ -314,7 +308,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 leading-tight">
-                LASU Result Slip &amp; Transcript OCR Engine
+                Review Result PDF
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 Direct Extraction of: <span className="font-semibold text-slate-700 dark:text-slate-300">Code, Title, Unit, Score, and Grade</span>
@@ -396,7 +390,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
               <input
                 type="file"
                 ref={fileInputRef}
-                accept=".pdf,.png,.jpg,.jpeg,.txt"
+                accept="application/pdf,.pdf"
                 className="hidden"
                 onChange={(e) => {
                   if (e.target.files && e.target.files[0]) {
@@ -433,38 +427,13 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                   Select or Drag &amp; Drop LASU Transcript PDF / Result Slip
                 </h4>
                 <p className="text-slate-500 dark:text-slate-400 text-xs mt-1 max-w-sm mx-auto leading-relaxed">
-                  Upload your genuine PDF transcript or portal result screenshot (.PDF, .PNG, .JPG, .TXT).
+                  Upload a text-based PDF transcript or result slip.
                 </p>
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
                   <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 shadow-2xs">
                     <span className="material-symbols-outlined text-[16px] text-emerald-600">search</span>
                     Browse Computer Files
                   </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Generate sample LASU Result Slip file for instant OCR demonstration
-                      const sampleText = `%PDF-1.4
-%LASU Computer Science Department Result Slip
-Session: 2024/2025 Semester: Fall 2024
-CSC 301 Data Structures & Algorithms 3 82 A
-CSC 303 Database Management Systems 3 76 A
-CSC 305 Operating Systems & Architecture 3 68 B
-MTH 301 Discrete Mathematics & Logic 3 64 B
-GNS 311 Entrepreneurship & Innovation 2 78 A
-CSC 307 Software Engineering Methodologies 3 74 A
-%%EOF`;
-                      const sampleFile = new File([sampleText], 'LASU_CSC_Fall2024_ResultSlip.pdf', {
-                        type: 'application/pdf',
-                      });
-                      handleFileUpload(sampleFile);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800 text-xs font-bold text-emerald-800 dark:text-emerald-300 transition-colors shadow-2xs cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[16px] text-emerald-600 dark:text-emerald-400">auto_awesome</span>
-                    Scan Sample LASU Result Slip PDF
-                  </button>
                 </div>
               </div>
 
@@ -510,29 +479,28 @@ CSC 307 Software Engineering Methodologies 3 74 A
           {/* Extracted Course Results Review Tab */}
           {!isScanning && parsedData && activeTab === 'extracted' && (
             <div className="space-y-4">
-              {/* Instant Auto-applied to Records Table Notice */}
-              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-200 shadow-2xs">
+              {/* Extraction review notice */}
+              <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 text-xs flex items-start gap-2.5 shadow-2xs">
                 <div className="flex items-center gap-2.5">
                   <span className="material-symbols-outlined text-[20px] text-emerald-600 dark:text-emerald-400 shrink-0">
                     check_circle
                   </span>
                   <div>
                     <span className="font-bold block text-emerald-950 dark:text-emerald-100">
-                      Instantly Extracted &amp; Auto-Applied to Records Table
+                      Review before saving
                     </span>
                     <span className="text-[11px] text-emerald-800/90 dark:text-emerald-300/80">
-                      {parsedData.courses.length} course records extracted from {parsedData.fileName}. Student academic results table is populated.
+                      {parsedData.courses.length} course records extracted from {parsedData.fileName}. Results are not saved until you verify the student name and confirm.
                     </span>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
-                >
-                  View in Dashboard
-                </button>
               </div>
+
+              <label className="block rounded-xl border border-slate-200 dark:border-slate-700 p-3.5 text-xs">
+                <span className="block font-bold text-slate-900 dark:text-slate-100 mb-1">Name on result document</span>
+                <span className="block text-slate-500 dark:text-slate-400 mb-2">Must match your profile: {expectedStudentName}</span>
+                <input value={parsedData.studentName || ''} readOnly aria-readonly="true" placeholder="Name could not be read from this PDF" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-slate-900 dark:text-slate-100" />
+              </label>
 
               {/* Validation error banner */}
               {validationError && (
