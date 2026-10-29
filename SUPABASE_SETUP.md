@@ -21,11 +21,11 @@ GEMINI_API_KEY=YOUR_SERVER_SIDE_GEMINI_KEY
 APP_URL=http://localhost:3000
 ```
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the frontend host's build/runtime environment too. They are read in `src/lib/supabaseClient.ts`; the Vite `VITE_` prefix means they are public browser configuration. The anon key is safe to expose only because RLS is enabled. **Never put a Supabase service-role/secret key in a `VITE_` variable or browser code.**
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the frontend host's build/runtime environment too. They are read in `src/lib/supabaseClient.ts`; the Vite `VITE_` prefix means they are public browser configuration. The anon key is safe to expose only because RLS is enabled. **Never put a Supabase service-role/secret key in a `VITE_` variable or browser code.** On Netlify, configure these variables for the build and redeploy after changing them. For scanned-PDF OCR, add `GEMINI_API_KEY` in Netlify's function environment.
 
-`GEMINI_API_KEY` is server-only and is used by `/api/ocr/transcript` in `server.ts` when a PDF has no extractable text. It is not needed for ordinary text-based PDFs. `APP_URL` is for deployment configuration and is not used by the browser Supabase client.
+`GEMINI_API_KEY` is server-only and is used by `/api/ocr/transcript` in `server.ts` locally and `netlify/functions/ocr-transcript.mjs` on Netlify when a PDF has no extractable text. Never prefix it with `VITE_`. Scanned PDFs sent through the Netlify function must be 4 MB or smaller because the function request includes base64 expansion. It is not needed for ordinary text-based PDFs. `APP_URL` is for deployment configuration and is not used by the browser Supabase client.
 
-Restart the dev server after editing `.env`. The app uses the local demo authentication/data when either Supabase frontend variable is missing; an empty `.env.example` does not connect a project.
+Restart the dev server after editing `.env`. Local development falls back to demo authentication/data when either Supabase frontend variable is missing. Production builds fail closed with a setup message instead of silently creating demo accounts. An empty `.env.example` does not connect a project.
 
 ## 3. Apply the database schema
 

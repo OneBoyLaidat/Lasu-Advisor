@@ -94,6 +94,11 @@ export async function extractTextFromFile(file: File): Promise<string> {
 }
 
 export async function extractTextFromScannedPdf(file: File, accessToken: string): Promise<string> {
+  // Netlify's buffered function request limit is 6 MB; base64 expands the PDF
+  // by about one third, so reject oversized scanned PDFs before sending them.
+  if (file.size > 4 * 1024 * 1024) {
+    throw new Error('This scanned PDF is larger than the 4 MB OCR limit. Compress it or upload a text-based PDF instead.');
+  }
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = '';
   const chunkSize = 0x8000;

@@ -1,7 +1,7 @@
 import { User } from '@supabase/supabase-js';
 import { CourseResult, MessageContact, StudentConversation, UserProfile, UserRole } from '../types';
 import { AuthResult, authenticateUser, registerNewUser } from './authService';
-import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
+import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
 
 type ProfileRow = {
   user_id: string;
@@ -78,11 +78,20 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
 }
 
 export async function signInAccount(identifier: string, password: string): Promise<AuthResult> {
-  if (!isSupabaseConfigured) return authenticateUser(identifier, password);
+  if (!isSupabaseConfigured) {
+    if (import.meta.env.PROD) return { success: false, error: supabaseConfigurationError || 'Live authentication is not configured.' };
+    return authenticateUser(identifier, password);
+  }
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
   if (!identifier.includes('@')) return { success: false, error: 'Use the email address on your LASU Advisor account to sign in.' };
-  const { data, error } = await client.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password });
+  let signInResponse: Awaited<ReturnType<typeof client.auth.signInWithPassword>>;
+  try {
+    signInResponse = await client.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password });
+  } catch (connectionError) {
+    return { success: false, error: describeSupabaseConnectionError(connectionError) };
+  }
+  const { data, error } = signInResponse;
   if (error) return { success: false, error: error.message };
   try {
     const profile = await getProfileForUser(data.user);
@@ -94,23 +103,34 @@ export async function signInAccount(identifier: string, password: string): Promi
 }
 
 export async function signUpAccount(data: Parameters<typeof registerNewUser>[0]): Promise<AuthResult & { confirmationRequired?: boolean }> {
-  if (!isSupabaseConfigured) return registerNewUser(data);
+  if (!isSupabaseConfigured) {
+    // Keep the local demo mode available during development, but never let a
+    // malformed/partially configured Supabase setup silently create a demo user.
+    if (import.meta.env.PROD) return { success: false, error: supabaseConfigurationError || 'Live authentication is not configured.' };
+    return registerNewUser(data);
+  }
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
   if (data.role !== 'student') return { success: false, error: 'Staff accounts are provisioned by faculty administrators. Please request an invitation.' };
-  const { data: result, error } = await client.auth.signUp({
-    email: data.email.trim().toLowerCase(),
-    password: data.password,
-    options: { data: {
-      account_type: 'student',
-      full_name: data.name.trim(),
-      department: data.department,
-      faculty: data.faculty,
-      matric_no: data.matricNo,
-      level: data.level,
-      admission_session: data.admissionSession,
-    } },
-  });
+  let signupResponse: Awaited<ReturnType<typeof client.auth.signUp>>;
+  try {
+    signupResponse = await client.auth.signUp({
+      email: data.email.trim().toLowerCase(),
+      password: data.password,
+      options: { data: {
+        account_type: 'student',
+        full_name: data.name.trim(),
+        department: data.department,
+        faculty: data.faculty,
+        matric_no: data.matricNo,
+        level: data.level,
+        admission_session: data.admissionSession,
+      } },
+    });
+  } catch (connectionError) {
+    return { success: false, error: describeSupabaseConnectionError(connectionError) };
+  }
+  const { data: result, error } = signupResponse;
   if (error) return { success: false, error: error.message };
   if (!result.session) return { success: true, confirmationRequired: true };
   if (!result.user) return { success: false, error: 'Account was created, but its identity could not be loaded. Please sign in.' };
