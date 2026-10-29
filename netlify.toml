@@ -2,6 +2,10 @@
   command = "npm run build:web"
   publish = "dist"
 
+  # These are public browser configuration values, not server secrets.
+  # Supabase access is protected by database Row Level Security (RLS).
+  environment = { SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY" }
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
