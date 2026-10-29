@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Adviser, UserProfile, ChatMessage, ArchivedChatThread } from '../types';
 import { ADVISER_AVATAR } from '../data/mockData';
 
@@ -6,6 +6,7 @@ interface StudentMessagingViewProps {
   studentProfile: UserProfile;
   advisers: Adviser[];
   messages: ChatMessage[];
+  threads: Record<string, ChatMessage[]>;
   selectedAdviserEmail: string;
   archivedThreads?: ArchivedChatThread[];
   onSelectAdviser: (email: string) => void;
@@ -16,6 +17,7 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
   studentProfile,
   advisers,
   messages,
+  threads,
   selectedAdviserEmail,
   archivedThreads = [],
   onSelectAdviser,
@@ -24,11 +26,6 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
   const [inputText, setInputText] = useState('');
   const [showArchives, setShowArchives] = useState(false);
   const selectedAdviser = advisers.find((adviser) => adviser.email === selectedAdviserEmail) || null;
-  const lastMessageByAdviser = useMemo(() => new Map(advisers.map((adviser) => [
-    adviser.email,
-    selectedAdviserEmail === adviser.email ? messages[messages.length - 1]?.text : '',
-  ])), [advisers, messages, selectedAdviserEmail]);
-
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!inputText.trim() || !selectedAdviser) return;
@@ -38,7 +35,7 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
 
   return (
     <section aria-label={`Messages for ${studentProfile.name}`} className="w-full min-w-0 h-[calc(100vh-5rem)] sm:h-[calc(100vh-6rem)] min-h-0 flex overflow-hidden bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800">
-      <aside className={`${selectedAdviser ? 'hidden md:flex' : 'flex'} w-full md:w-72 lg:w-80 shrink-0 flex-col border-r border-slate-200 dark:border-slate-800`}>
+      <aside className={`${selectedAdviser ? 'hidden md:flex w-full md:w-72 lg:w-80 border-r' : 'flex w-full'} shrink-0 flex-col border-slate-200 dark:border-slate-800`}>
         <div className="px-4 py-4 border-b border-slate-200 dark:border-slate-800">
           <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Messages</h1>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Your academic contacts</p>
@@ -51,8 +48,9 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
                 <img src={adviser.avatarUrl || ADVISER_AVATAR} alt="" className="w-11 h-11 rounded-full object-cover bg-slate-100 dark:bg-slate-800 shrink-0" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold truncate text-slate-900 dark:text-slate-100">{adviser.name}</span>
-                  <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">{lastMessageByAdviser.get(adviser.email) || adviser.title}</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">{threads[adviser.email]?.at(-1)?.text || adviser.title}</span>
                 </span>
+                {(threads[adviser.email] || []).filter((message) => message.sender === 'adviser' && !message.isRead).length > 0 && <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" aria-label="Unread messages" />}
               </button>
             );
           }) : <p className="px-4 py-6 text-sm text-slate-500">No academic contacts are available yet.</p>}
@@ -61,7 +59,7 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
         </div>
       </aside>
 
-      <div className={`${selectedAdviser ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col`}>
+      <div className={`${selectedAdviser ? 'flex' : 'hidden'} min-w-0 flex-1 flex-col`}>
         {selectedAdviser ? <>
           <header className="h-[68px] shrink-0 px-3 sm:px-5 flex items-center gap-3 border-b border-slate-200 dark:border-slate-800">
             <button type="button" onClick={() => onSelectAdviser('')} className="md:hidden p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Back to contacts"><span className="material-symbols-outlined">arrow_back</span></button>
@@ -81,7 +79,7 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
             <textarea value={inputText} onChange={(event) => setInputText(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); handleSubmit(event); } }} rows={1} placeholder={`Message ${selectedAdviser.name}`} className="min-w-0 flex-1 resize-y max-h-28 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-4 py-3 text-sm outline-none focus:border-emerald-600 break-words [overflow-wrap:anywhere]" />
             <button type="submit" disabled={!inputText.trim()} className="self-end rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white px-4 py-3" aria-label="Send message"><span className="material-symbols-outlined text-[18px]">send</span></button>
           </form>
-        </> : <div className="m-auto hidden md:block text-sm text-slate-500">Select a person to open your chat.</div>}
+        </> : null}
       </div>
     </section>
   );

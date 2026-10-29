@@ -35,14 +35,15 @@ import { StudentDashboard } from './components/StudentDashboard';
 import { LecturerDashboard } from './components/LecturerDashboard';
 import { AdviserMessagingView } from './components/AdviserMessagingView';
 import { StudentMessagingView } from './components/StudentMessagingView';
+import { DirectMessagingView } from './components/DirectMessagingView';
 import { DepartmentalControl } from './components/DepartmentalControl';
 import { ExecutiveOverview } from './components/ExecutiveOverview';
 import { AnalyticsView } from './components/AnalyticsView';
 import { AuthView } from './components/AuthView';
 import { SettingsView } from './components/SettingsView';
 import { propagateAdviserAssignmentToStoredAccounts } from './lib/authService';
-import { getCurrentProfile, loadDirectMessages, loadLatestTranscript, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistTranscript, persistUserProfile, signOutAccount } from './lib/liveDataService';
-import { isSupabaseConfigured } from './lib/supabaseClient';
+import { getCurrentProfile, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistTranscript, persistUserProfile, signOutAccount } from './lib/liveDataService';
+import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
 
 // Modal imports
 import { BookAppointmentModal } from './components/BookAppointmentModal';
@@ -125,7 +126,10 @@ export function App() {
   const [studentThreads, setStudentThreads] = useState<Record<string, ChatMessage[]>>(() =>
     !isSupabaseConfigured ? { 's.jenkins@lasu.edu.ng': INITIAL_CHAT_MESSAGES } : {}
   );
+  const [staffThreads, setStaffThreads] = useState<Record<string, ChatMessage[]>>({});
+  const [staffMessageContacts, setStaffMessageContacts] = useState<Awaited<ReturnType<typeof loadStaffMessageContacts>>>([]);
   const [activeStudentAdviserEmail, setActiveStudentAdviserEmail] = useState('');
+  const [activeStaffContactEmail, setActiveStaffContactEmail] = useState('');
   const [conversations, setConversations] = useState<StudentConversation[]>(INITIAL_CONVERSATIONS);
   const [activeConversationId, setActiveConversationId] = useState<string>('conv_michael');
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
@@ -157,7 +161,7 @@ export function App() {
       if (profile) {
         setUserProfile(profile);
         setUserRole(profile.role);
-        setActiveStudentAdviserEmail(profile.role === 'student' ? profile.assignedAdviserEmail || '' : '');
+        setActiveStudentAdviserEmail('');
         setCurrentTab(profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
         setIsAuthenticated(true);
         const transcript = await loadLatestTranscript(profile.id);
@@ -186,7 +190,7 @@ export function App() {
   useEffect(() => {
     if (!isAuthenticated || userRole !== 'student' || !isSupabaseConfigured) return;
     let active = true;
-    loadDirectMessages(userProfile.id).then((loaded) => {
+    loadDirectMessages(userProfile.id, 'student').then((loaded) => {
       if (!active || loaded.length === 0) return;
       setStudentThreads((previous) => {
         const next = { ...previous };
@@ -198,6 +202,73 @@ export function App() {
       });
     }).catch((error) => console.error('Could not load messages', error));
     return () => { active = false; };
+  }, [isAuthenticated, userRole, userProfile.id]);
+
+  useEffect(() => {
+    if (!isAuthenticated || userRole !== 'lecturer' || !isSupabaseConfigured) return;
+    let active = true;
+    loadLecturerConversations(userProfile.id).then((loaded) => {
+      if (!active) return;
+      setConversations(loaded);
+      if (loaded.length) setActiveConversationId(loaded[0].id);
+    }).catch((error) => console.error('Could not load assigned student messages', error));
+    return () => { active = false; };
+  }, [isAuthenticated, userRole, userProfile.id]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !['hod', 'dean'].includes(userRole) || !isSupabaseConfigured) return;
+    let active = true;
+    Promise.all([loadStaffMessageContacts(userProfile), loadDirectMessages(userProfile.id, userRole)]).then(([contacts, loaded]) => {
+      if (!active) return;
+      setStaffMessageContacts(contacts);
+      const grouped = loaded.reduce<Record<string, ChatMessage[]>>((threads, item) => {
+        (threads[item.email] ||= []).push(item.message);
+        return threads;
+      }, {});
+      setStaffThreads(grouped);
+    }).catch((error) => console.error('Could not load faculty contacts and messages', error));
+    return () => { active = false; };
+  }, [isAuthenticated, userRole, userProfile.id]);
+
+  useEffect(() => {
+    if (isSupabaseConfigured || !isAuthenticated || !['hod', 'dean'].includes(userRole)) return;
+    const contacts = userRole === 'hod'
+      ? [
+          ...advisers.filter((adviser) => adviser.department === userProfile.department).map((adviser) => ({ id: adviser.id, name: adviser.name, email: adviser.email, role: 'lecturer' as const, department: adviser.department, avatarUrl: adviser.avatarUrl })),
+          { id: INITIAL_USER_PROFILES.dean.id, name: INITIAL_USER_PROFILES.dean.name, email: INITIAL_USER_PROFILES.dean.email, role: 'dean' as const, department: INITIAL_USER_PROFILES.dean.department },
+        ]
+      : [{ id: INITIAL_USER_PROFILES.hod.id, name: INITIAL_USER_PROFILES.hod.name, email: INITIAL_USER_PROFILES.hod.email, role: 'hod' as const, department: INITIAL_USER_PROFILES.hod.department }];
+    setStaffMessageContacts(contacts);
+  }, [isAuthenticated, userRole, userProfile.department, advisers]);
+
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client || !isAuthenticated || !isSupabaseConfigured || !['student', 'lecturer', 'hod', 'dean'].includes(userRole)) return;
+    const channel = client.channel(`messages-${userProfile.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `recipient_id=eq.${userProfile.id}` }, async () => {
+        try {
+          if (userRole === 'student') {
+            const loaded = await loadDirectMessages(userProfile.id, 'student');
+            const grouped = loaded.reduce<Record<string, ChatMessage[]>>((threads, item) => {
+              (threads[item.email] ||= []).push(item.message);
+              return threads;
+            }, {});
+            setStudentThreads(grouped);
+          } else if (userRole === 'hod' || userRole === 'dean') {
+            const loaded = await loadDirectMessages(userProfile.id, userRole);
+            setStaffThreads(loaded.reduce<Record<string, ChatMessage[]>>((threads, item) => {
+              (threads[item.email] ||= []).push(item.message);
+              return threads;
+            }, {}));
+          } else {
+            setConversations(await loadLecturerConversations(userProfile.id));
+          }
+        } catch (error) {
+          console.error('Could not refresh incoming messages', error);
+        }
+      })
+      .subscribe();
+    return () => { void client.removeChannel(channel); };
   }, [isAuthenticated, userRole, userProfile.id]);
 
   // Modal Control States
@@ -376,7 +447,7 @@ export function App() {
       id: `msg_${Date.now()}`,
       sender: isStudent ? 'student' : 'adviser',
       senderName: userProfile.name,
-      senderRole: isStudent ? 'Student' : 'Level Adviser',
+      senderRole: isStudent ? 'Student' : userProfile.role.toUpperCase(),
       studentName: isStudent ? userProfile.name : undefined,
       studentMatric: isStudent ? userProfile.matricNo : undefined,
       recipientName: isStudent ? recipientEmail : undefined,
@@ -387,8 +458,18 @@ export function App() {
     if (isStudent && recipientEmail) {
       setStudentThreads((prev) => ({ ...prev, [recipientEmail]: [...(prev[recipientEmail] || []), newMsg] }));
       if (recipientEmail === userProfile.assignedAdviserEmail) setChatMessages((prev) => [...prev, newMsg]);
-      persistDirectMessage({ senderId: userProfile.id, recipientEmail, body: text, threadKey: `${userProfile.id}:${recipientEmail}` })
-        .catch((error) => showToast('Message not saved', error instanceof Error ? error.message : 'Try sending again.', 'warning'));
+      persistDirectMessage({ senderId: userProfile.id, recipientEmail, body: text })
+        .catch((error) => {
+          setStudentThreads((previous) => ({ ...previous, [recipientEmail]: (previous[recipientEmail] || []).filter((message) => message.id !== newMsg.id) }));
+          showToast('Message not saved', error instanceof Error ? error.message : 'Try sending again.', 'warning');
+        });
+    } else if (recipientEmail && (userProfile.role === 'hod' || userProfile.role === 'dean')) {
+      setStaffThreads((previous) => ({ ...previous, [recipientEmail]: [...(previous[recipientEmail] || []), newMsg] }));
+      persistDirectMessage({ senderId: userProfile.id, recipientEmail, body: text })
+        .catch((error) => {
+          setStaffThreads((previous) => ({ ...previous, [recipientEmail]: (previous[recipientEmail] || []).filter((message) => message.id !== newMsg.id) }));
+          showToast('Message not saved', error instanceof Error ? error.message : 'Try sending again.', 'warning');
+        });
     } else {
       setChatMessages((prev) => [...prev, newMsg]);
     }
@@ -415,16 +496,32 @@ export function App() {
         "Your message is held securely for your Level Adviser's manual review and reply.",
         'success'
       );
+    } else if (recipientEmail && (userProfile.role === 'hod' || userProfile.role === 'dean')) {
+      showToast('Message sent', `Your message was sent to ${recipientEmail}.`, 'success');
     } else {
       showToast('Reply Sent', 'Your direct message has been delivered to the student.', 'success');
     }
   };
 
   // Adviser sends manual peer-to-peer reply to student
-  const handleAdviserReply = (conversationId: string, replyText: string) => {
+  const handleAdviserReply = async (conversationId: string, replyText: string) => {
     if (!userProfile) {
       showToast('Authentication Required', 'You must be logged in to send replies.', 'warning');
       return;
+    }
+
+    const targetConversation = conversations.find((conversation) => conversation.id === conversationId);
+    if (isSupabaseConfigured && targetConversation?.studentEmail) {
+      try {
+        await persistDirectMessage({
+          senderId: userProfile.id,
+          recipientEmail: targetConversation.studentEmail,
+          body: replyText,
+        });
+      } catch (error) {
+        showToast('Message not sent', error instanceof Error ? error.message : 'Please try sending again.', 'warning');
+        return;
+      }
     }
 
     const replyMsg: ChatMessage = {
@@ -464,8 +561,12 @@ export function App() {
   // Select conversation and mark unread as read
   const handleSelectConversation = (id: string) => {
     setActiveConversationId(id);
+    const selectedConversation = conversations.find((conversation) => conversation.id === id);
+    if (isSupabaseConfigured && userRole === 'lecturer' && selectedConversation?.studentEmail) {
+      markDirectMessagesRead(userProfile.id, selectedConversation.studentEmail).catch((error) => console.error('Could not mark student messages read', error));
+    }
     setConversations((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
+      prev.map((c) => (c.id === id ? { ...c, unreadCount: 0, messages: c.messages.map((message) => message.sender === 'student' ? { ...message, isRead: true } : message) } : c))
     );
   };
 
@@ -492,6 +593,16 @@ export function App() {
     setStudentThreads((previous) => ({
       ...previous,
       [email]: (previous[email] || []).map((message) => message.sender === 'adviser' ? { ...message, isRead: true } : message),
+    }));
+  };
+
+  const handleSelectStaffContact = (email: string) => {
+    setActiveStaffContactEmail(email);
+    if (!email) return;
+    markDirectMessagesRead(userProfile.id, email).catch((error) => console.error('Could not mark faculty messages read', error));
+    setStaffThreads((previous) => ({
+      ...previous,
+      [email]: (previous[email] || []).map((message) => message.sender !== 'adviser' ? { ...message, isRead: true } : message),
     }));
   };
 
@@ -734,7 +845,9 @@ export function App() {
           setUserProfile(profile);
           setUserRole(profile.role);
           setStudentThreads(!isSupabaseConfigured && profile.id === INITIAL_USER_PROFILES.student.id ? { 's.jenkins@lasu.edu.ng': INITIAL_CHAT_MESSAGES } : {});
-          setActiveStudentAdviserEmail(profile.role === 'student' ? profile.assignedAdviserEmail || '' : '');
+          setStaffThreads({});
+          setActiveStaffContactEmail('');
+          setActiveStudentAdviserEmail('');
           setHasNudgeNotice(!profile.hasUploadedTranscript);
           if (profile.role === 'student' || profile.role === 'lecturer') {
             setCurrentTab('dashboard');
@@ -758,7 +871,7 @@ export function App() {
     ? (assignedAdviser?.assignedSession ? departmentAdvisees.filter((a) => a.admissionSession === assignedAdviser.assignedSession && a.level === assignedAdviser.assignedLevel) : [])
     : departmentAdvisees;
   const advisorCohortConversations = userRole === 'lecturer'
-    ? (assignedAdviser?.assignedSession ? departmentConversations.filter((c) => c.admissionSession === assignedAdviser.assignedSession && c.level === assignedAdviser.assignedLevel) : [])
+    ? (isSupabaseConfigured ? conversations : assignedAdviser?.assignedSession ? departmentConversations.filter((c) => c.admissionSession === assignedAdviser.assignedSession && c.level === assignedAdviser.assignedLevel) : [])
     : departmentConversations;
   const matchedStudentAdviser = advisers.find((adviser) => adviser.email === userProfile.assignedAdviserEmail);
   const studentAdvisers = userProfile.assignedAdviserEmail
@@ -825,7 +938,7 @@ export function App() {
           ? Object.values(studentThreads).reduce((count, thread) => count + thread.filter((message) => message.sender === 'adviser' && !message.isRead).length, 0)
           : userRole === 'lecturer'
             ? advisorCohortConversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0)
-            : 0}
+            : Object.values(staffThreads).reduce((count, thread) => count + thread.filter((message) => message.sender !== 'adviser' && !message.isRead).length, 0)}
       />
 
       {/* Top Header Bar */}
@@ -837,7 +950,7 @@ export function App() {
         searchQuery={globalSearchQuery}
         setSearchQuery={setGlobalSearchQuery}
         onOpenSettings={() => setCurrentTab('settings')}
-        onSignOut={() => { signOutAccount().catch((error) => console.error('Sign out failed', error)).finally(() => { setStudentThreads({}); setActiveStudentAdviserEmail(''); setIsAuthenticated(false); }); }}
+        onSignOut={() => { signOutAccount().catch((error) => console.error('Sign out failed', error)).finally(() => { setStudentThreads({}); setStaffThreads({}); setStaffMessageContacts([]); setActiveStudentAdviserEmail(''); setActiveStaffContactEmail(''); setIsAuthenticated(false); }); }}
         notifications={notifications}
         onClearNotifications={() => setNotifications([])}
         onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
@@ -947,28 +1060,21 @@ export function App() {
                     studentProfile={userProfile}
                     advisers={studentAdvisers}
                     messages={studentThreads[activeStudentAdviserEmail] || (!isSupabaseConfigured && userProfile.id === INITIAL_USER_PROFILES.student.id && activeStudentAdviserEmail === userProfile.assignedAdviserEmail ? chatMessages : [])}
+                    threads={studentThreads}
                     selectedAdviserEmail={activeStudentAdviserEmail}
                     archivedThreads={userProfile.archivedChats || []}
                     onSelectAdviser={handleSelectStudentAdviser}
                     onSendMessage={(email, text) => handleSendMessage(text, email)}
                   />
-                ) : userRole === 'hod' ? (
-                    <div className="min-h-[calc(100vh-7rem)] w-full bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800 p-8">
-                      <h1 className="text-2xl font-bold">Messages</h1>
-                      <p className="mt-2 text-sm text-slate-500">HOD messaging is available for Lecturers and the Dean of the Faculty.</p>
-                      <div className="mt-6 grid gap-3 sm:grid-cols-2 max-w-2xl">
-                        {advisers.filter((a) => a.department === userProfile.department).map((a) => <a key={a.id} href={`mailto:${a.email}`} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-emerald-500"><div className="font-semibold">{a.name}</div><div className="text-xs text-slate-500">Lecturer • {a.department}</div></a>)}
-                        <a href={`mailto:${INITIAL_USER_PROFILES.dean.email}`} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-emerald-500"><div className="font-semibold">Dean of the Faculty</div><div className="text-xs text-slate-500">Faculty of Computing &amp; Information Technology</div></a>
-                      </div>
-                    </div>
-                  ) : userRole === 'dean' ? (
-                    <div className="min-h-[calc(100vh-7rem)] w-full bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800 p-6 sm:p-8">
-                      <h1 className="text-2xl font-bold">Messages</h1>
-                      <p className="mt-2 text-sm text-slate-500">Faculty communication with Heads of Department.</p>
-                      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 max-w-4xl">
-                        {[...new Map(advisers.filter((a) => a.department).map((a) => [a.department, a])).values()].map((adviser) => <a key={adviser.department} href={`mailto:${adviser.email}`} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-emerald-500"><div className="font-semibold">{adviser.department} HOD</div><div className="text-xs text-slate-500">{adviser.department}</div></a>)}
-                      </div>
-                    </div>
+                ) : userRole === 'hod' || userRole === 'dean' ? (
+                    <DirectMessagingView
+                      profile={userProfile}
+                      contacts={staffMessageContacts}
+                      threads={staffThreads}
+                      selectedEmail={activeStaffContactEmail}
+                      onSelectContact={handleSelectStaffContact}
+                      onSendMessage={(email, text) => handleSendMessage(text, email)}
+                    />
                   ) : <AdviserMessagingView
                     conversations={advisorCohortConversations}
                     activeConversationId={activeConversationId}

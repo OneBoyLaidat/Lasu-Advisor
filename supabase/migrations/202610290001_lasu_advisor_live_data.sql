@@ -54,6 +54,10 @@ create or replace function public.current_profile_department()
 returns text language sql stable security definer set search_path = public
 as $$ select department from public.profiles where user_id = auth.uid() $$;
 
+create or replace function public.current_profile_faculty()
+returns text language sql stable security definer set search_path = public
+as $$ select faculty from public.profiles where user_id = auth.uid() $$;
+
 create or replace function public.current_profile_session()
 returns text language sql stable security definer set search_path = public
 as $$ select admission_session from public.profiles where user_id = auth.uid() $$;
@@ -65,6 +69,17 @@ as $$ select level from public.profiles where user_id = auth.uid() $$;
 create or replace function public.current_profile_name()
 returns text language sql stable security definer set search_path = public
 as $$ select full_name from public.profiles where user_id = auth.uid() $$;
+
+create or replace function public.has_own_result_document(target_path text)
+returns boolean language sql stable security definer set search_path = public, storage
+as $$
+  select target_path is not null and exists (
+    select 1 from storage.objects object
+    where object.bucket_id = 'result-documents'
+      and object.name = target_path
+      and (storage.foldername(object.name))[1] = auth.uid()::text
+  )
+$$;
 
 create or replace function public.is_department_lecturer(target_user_id uuid, target_department text)
 returns boolean language sql stable security definer set search_path = public
@@ -111,9 +126,10 @@ as $$
       ))
       or (public.current_profile_role() = 'lecturer' and recipient.role = 'student' and public.can_access_student(target_user_id))
       or (public.current_profile_role() = 'hod' and recipient.role in ('lecturer', 'dean') and (
-        recipient.role = 'dean' or recipient.department = public.current_profile_department()
+        (recipient.role = 'dean' and recipient.faculty = public.current_profile_faculty())
+        or (recipient.role = 'lecturer' and recipient.department = public.current_profile_department())
       ))
-      or (public.current_profile_role() = 'dean' and recipient.role = 'hod' and recipient.faculty = (select faculty from public.profiles where user_id = auth.uid()))
+      or (public.current_profile_role() = 'dean' and recipient.role = 'hod' and recipient.faculty = public.current_profile_faculty())
     )
   )
 $$;
@@ -122,6 +138,9 @@ create or replace function public.create_student_profile()
 returns trigger language plpgsql security definer set search_path = public
 as $$
 begin
+  if new.raw_user_meta_data->>'account_type' is distinct from 'student' then
+    return new;
+  end if;
   insert into public.profiles(user_id, full_name, email, role, department, faculty, matric_no, level, admission_session)
   values (
     new.id,
@@ -146,13 +165,16 @@ create or replace function public.protect_profile_role_and_cohort()
 returns trigger language plpgsql security definer set search_path = public
 as $$
 begin
-  if auth.uid() is not null and auth.uid() = old.user_id and (
+  if auth.uid() is not null and auth.uid() = old.user_id and pg_trigger_depth() = 1 and (
     new.role is distinct from old.role or new.department is distinct from old.department
     or new.faculty is distinct from old.faculty or new.matric_no is distinct from old.matric_no
     or new.staff_id is distinct from old.staff_id or new.level is distinct from old.level
+    or new.email is distinct from old.email
     or new.admission_session is distinct from old.admission_session
+    or new.has_uploaded_transcript is distinct from old.has_uploaded_transcript
+    or new.transcript_file_name is distinct from old.transcript_file_name
   ) then
-    raise exception 'Role and academic cohort fields can only be changed by an administrator';
+    raise exception 'Identity, role, cohort, and transcript verification fields can only be changed by an administrator or trusted database trigger';
   end if;
   return new;
 end
@@ -182,6 +204,53 @@ drop trigger if exists protect_message_read_receipt_trigger on public.messages;
 create trigger protect_message_read_receipt_trigger before update on public.messages
 for each row execute procedure public.protect_message_read_receipt();
 
+create or replace function public.mark_profile_transcript_uploaded()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  update public.profiles set has_uploaded_transcript = true, transcript_file_name = new.file_name
+  where user_id = new.user_id;
+  return new;
+end
+$$;
+drop trigger if exists mark_profile_transcript_uploaded_trigger on public.student_results;
+create trigger mark_profile_transcript_uploaded_trigger after insert on public.student_results
+for each row execute procedure public.mark_profile_transcript_uploaded();
+
+update public.profiles profile
+set has_uploaded_transcript = true,
+    transcript_file_name = (
+      select result.file_name from public.student_results result
+      where result.user_id = profile.user_id
+      order by result.created_at desc limit 1
+    )
+where exists (select 1 from public.student_results result where result.user_id = profile.user_id);
+
+revoke all on function public.current_profile_role() from public, anon;
+revoke all on function public.current_profile_department() from public, anon;
+revoke all on function public.current_profile_faculty() from public, anon;
+revoke all on function public.current_profile_session() from public, anon;
+revoke all on function public.current_profile_level() from public, anon;
+revoke all on function public.current_profile_name() from public, anon;
+revoke all on function public.has_own_result_document(text) from public, anon;
+revoke all on function public.is_department_lecturer(uuid, text) from public, anon;
+revoke all on function public.can_access_student(uuid) from public, anon;
+revoke all on function public.can_message(uuid) from public, anon;
+grant execute on function public.current_profile_role() to authenticated;
+grant execute on function public.current_profile_department() to authenticated;
+grant execute on function public.current_profile_faculty() to authenticated;
+grant execute on function public.current_profile_session() to authenticated;
+grant execute on function public.current_profile_level() to authenticated;
+grant execute on function public.current_profile_name() to authenticated;
+grant execute on function public.has_own_result_document(text) to authenticated;
+grant execute on function public.is_department_lecturer(uuid, text) to authenticated;
+grant execute on function public.can_access_student(uuid) to authenticated;
+grant execute on function public.can_message(uuid) to authenticated;
+revoke all on function public.create_student_profile() from public, anon, authenticated;
+revoke all on function public.protect_profile_role_and_cohort() from public, anon, authenticated;
+revoke all on function public.protect_message_read_receipt() from public, anon, authenticated;
+revoke all on function public.mark_profile_transcript_uploaded() from public, anon, authenticated;
+
 alter table public.profiles enable row level security;
 alter table public.adviser_assignments enable row level security;
 alter table public.student_results enable row level security;
@@ -201,7 +270,8 @@ using (
       and assignment.admission_session = public.current_profile_session()
       and assignment.level = public.current_profile_level()
   ))
-  or (role = 'dean' and public.current_profile_role() = 'hod')
+  or (role = 'dean' and public.current_profile_role() = 'hod' and faculty = public.current_profile_faculty())
+  or (role = 'hod' and public.current_profile_role() = 'dean' and faculty = public.current_profile_faculty())
 );
 drop policy if exists "profile self update" on public.profiles;
 create policy "profile self update" on public.profiles for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
@@ -224,7 +294,11 @@ create policy "student results scoped read" on public.student_results for select
 using (user_id = auth.uid() or public.can_access_student(user_id));
 drop policy if exists "student results own insert" on public.student_results;
 create policy "student results own insert" on public.student_results for insert to authenticated
-with check (user_id = auth.uid() and document_student_name = public.current_profile_name());
+with check (
+  user_id = auth.uid()
+  and document_student_name = public.current_profile_name()
+  and public.has_own_result_document(file_path)
+);
 drop policy if exists "hod scoped result update" on public.student_results;
 create policy "hod scoped result update" on public.student_results for update to authenticated
 using (public.current_profile_role() = 'hod' and public.can_access_student(user_id))
@@ -248,3 +322,5 @@ with check (bucket_id = 'result-documents' and (storage.foldername(name))[1] = a
 create index if not exists profiles_department_cohort_idx on public.profiles(department, admission_session, level);
 create index if not exists student_results_user_created_idx on public.student_results(user_id, created_at desc);
 create index if not exists messages_thread_created_idx on public.messages(thread_key, created_at);
+create index if not exists messages_sender_created_idx on public.messages(sender_id, created_at);
+create index if not exists messages_recipient_created_idx on public.messages(recipient_id, created_at);

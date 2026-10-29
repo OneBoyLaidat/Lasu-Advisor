@@ -1,5 +1,5 @@
 import { User } from '@supabase/supabase-js';
-import { CourseResult, UserProfile, UserRole } from '../types';
+import { CourseResult, MessageContact, StudentConversation, UserProfile, UserRole } from '../types';
 import { AuthResult, authenticateUser, registerNewUser } from './authService';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
@@ -50,8 +50,6 @@ const profileToRow = (profile: UserProfile) => ({
   admission_session: profile.admissionSession || null,
   avatar_url: profile.avatarUrl || null,
   phone: profile.phone || null,
-  has_uploaded_transcript: profile.hasUploadedTranscript || false,
-  transcript_file_name: profile.transcriptFileName || null,
 });
 
 async function getProfileForUser(user: User): Promise<UserProfile | null> {
@@ -104,6 +102,7 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
     email: data.email.trim().toLowerCase(),
     password: data.password,
     options: { data: {
+      account_type: 'student',
       full_name: data.name.trim(),
       department: data.department,
       faculty: data.faculty,
@@ -114,6 +113,7 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
   });
   if (error) return { success: false, error: error.message };
   if (!result.session) return { success: true, confirmationRequired: true };
+  if (!result.user) return { success: false, error: 'Account was created, but its identity could not be loaded. Please sign in.' };
   try {
     const profile = await getProfileForUser(result.user);
     return profile ? { success: true, profile } : { success: false, error: 'Account created, but profile setup has not completed. Try signing in again shortly.' };
@@ -191,11 +191,6 @@ export async function persistTranscript(
     if (filePath) await client.storage.from('result-documents').remove([filePath]);
     throw error;
   }
-  const { error: profileError } = await client.from('profiles').update({
-    has_uploaded_transcript: true,
-    transcript_file_name: fileName,
-  }).eq('user_id', profile.id);
-  if (profileError) throw profileError;
 }
 
 export async function loadLatestTranscript(userId: string): Promise<{ courses: CourseResult[]; cgpa: number; fileName: string } | null> {
@@ -210,23 +205,23 @@ export async function persistDirectMessage(input: {
   senderId: string;
   recipientEmail: string;
   body: string;
-  threadKey: string;
 }): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return;
   const { data: recipient, error: recipientError } = await client.from('profiles').select('user_id').eq('email', input.recipientEmail).maybeSingle();
   if (recipientError) throw recipientError;
   if (!recipient) throw new Error('This adviser does not have an active messaging account yet.');
+  const threadKey = [input.senderId, recipient.user_id].sort().join(':');
   const { error } = await client.from('messages').insert({
     sender_id: input.senderId,
     recipient_id: recipient.user_id,
     body: input.body,
-    thread_key: input.threadKey,
+    thread_key: threadKey,
   });
   if (error) throw error;
 }
 
-export async function loadDirectMessages(userId: string): Promise<Array<{ email: string; message: { id: string; sender: 'student' | 'adviser'; senderName: string; text: string; timestamp: string; isRead?: boolean }; threadKey: string }>> {
+export async function loadDirectMessages(userId: string, role: UserRole = 'student'): Promise<Array<{ email: string; message: { id: string; sender: 'student' | 'adviser'; senderName: string; text: string; timestamp: string; isRead?: boolean }; threadKey: string }>> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return [];
   const { data: rows, error } = await client.from('messages').select('id,sender_id,recipient_id,body,thread_key,created_at,read_at').or(`sender_id.eq.${userId},recipient_id.eq.${userId}`).order('created_at', { ascending: true });
@@ -245,13 +240,95 @@ export async function loadDirectMessages(userId: string): Promise<Array<{ email:
       threadKey: row.thread_key,
       message: {
         id: String(row.id),
-        sender: row.sender_id === userId ? 'student' as const : 'adviser' as const,
-        senderName: row.sender_id === userId ? 'Student' : contact.full_name,
+        sender: row.sender_id === userId ? (role === 'student' ? 'student' as const : 'adviser' as const) : (role === 'student' ? 'adviser' as const : 'student' as const),
+        senderName: row.sender_id === userId ? 'You' : contact.full_name,
         text: row.body,
         timestamp: new Date(row.created_at).toLocaleString(),
         isRead: Boolean(row.read_at),
       },
     }];
+  });
+}
+
+export async function loadStaffMessageContacts(profile: UserProfile): Promise<MessageContact[]> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured || !['hod', 'dean'].includes(profile.role)) return [];
+  const roles = profile.role === 'hod' ? ['lecturer', 'dean'] : ['hod'];
+  let query = client.from('profiles').select('user_id,full_name,email,role,department,avatar_url').in('role', roles);
+  if (profile.role === 'hod') query = query.or(`department.eq.${profile.department},faculty.eq.${profile.faculty}`);
+  else query = query.eq('faculty', profile.faculty);
+  const { data, error } = await query.order('full_name');
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.user_id,
+    name: row.full_name,
+    email: row.email,
+    role: row.role as UserRole,
+    department: row.department,
+    avatarUrl: row.avatar_url || undefined,
+  }));
+}
+
+export async function loadLecturerConversations(userId: string): Promise<StudentConversation[]> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return [];
+  const { data: students, error: studentError } = await client.from('profiles')
+    .select('user_id,full_name,email,department,matric_no,level,admission_session,has_uploaded_transcript')
+    .eq('role', 'student');
+  if (studentError) throw studentError;
+  if (!students?.length) return [];
+  const studentIds = students.map((student) => student.user_id);
+  const [{ data: results, error: resultsError }, { data: messageRows, error: messagesError }] = await Promise.all([
+    client.from('student_results').select('user_id,cgpa').in('user_id', studentIds).order('created_at', { ascending: false }),
+    client.from('messages').select('id,sender_id,recipient_id,body,created_at,read_at').or(`sender_id.eq.${userId},recipient_id.eq.${userId}`).order('created_at', { ascending: true }),
+  ]);
+  if (resultsError) throw resultsError;
+  if (messagesError) throw messagesError;
+  const resultByStudent = new Map<string, number>();
+  for (const result of results || []) if (!resultByStudent.has(result.user_id)) resultByStudent.set(result.user_id, Number(result.cgpa));
+  const studentById = new Map(students.map((student) => [student.user_id, student]));
+  const messagesByStudent = new Map<string, StudentConversation['messages']>();
+  for (const row of messageRows || []) {
+    const studentId = row.sender_id === userId ? row.recipient_id : row.sender_id;
+    if (!studentById.has(studentId)) continue;
+    const student = studentById.get(studentId)!;
+    const thread = messagesByStudent.get(studentId) || [];
+    thread.push({
+      id: String(row.id),
+      sender: row.sender_id === userId ? 'adviser' : 'student',
+      senderName: row.sender_id === userId ? 'You' : student.full_name,
+      studentId,
+      studentName: student.full_name,
+      studentMatric: student.matric_no || undefined,
+      text: row.body,
+      timestamp: new Date(row.created_at).toLocaleString(),
+      isRead: Boolean(row.read_at),
+    });
+    messagesByStudent.set(studentId, thread);
+  }
+  return students.map((student) => {
+    const cgpa = resultByStudent.get(student.user_id) || 0;
+    const messages = messagesByStudent.get(student.user_id) || [];
+    const latest = messages[messages.length - 1];
+    return {
+      id: `student-${student.user_id}`,
+      studentId: student.user_id,
+      studentEmail: student.email,
+      studentName: student.full_name,
+      matricNo: student.matric_no || '',
+      level: student.level || '',
+      admissionSession: student.admission_session || undefined,
+      department: student.department,
+      avatarUrl: '',
+      cgpa,
+      status: (cgpa < 2.5 ? 'At Risk' : cgpa >= 3.5 ? 'Good Standing' : 'Average') as StudentConversation['status'],
+      hasUploadedResult: Boolean(student.has_uploaded_transcript),
+      lastMessage: latest?.text || '',
+      lastMessageTime: latest?.timestamp || '',
+      unreadCount: messages.filter((message) => message.sender === 'student' && !message.isRead).length,
+      studentUnreadCount: messages.filter((message) => message.sender === 'adviser' && !message.isRead).length,
+      messages,
+    };
   });
 }
 

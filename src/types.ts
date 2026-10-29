@@ -195,6 +195,7 @@ export interface ArchivedChatThread {
 export interface StudentConversation {
   id: string;
   studentId: string;
+  studentEmail?: string;
   studentName: string;
   matricNo: string;
   level: string;
@@ -213,6 +214,15 @@ export interface StudentConversation {
   archivedThreads?: ArchivedChatThread[];
   currentAdviserId?: string;
   currentAdviserName?: string;
+}
+
+export interface MessageContact {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  department: string;
+  avatarUrl?: string;
 }
 
 export interface NotificationItem {

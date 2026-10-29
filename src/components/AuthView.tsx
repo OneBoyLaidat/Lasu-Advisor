@@ -66,7 +66,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   // Unified Login fields
   const [identifier, setIdentifier] = useState<string>('');
   const [password, setPassword] = useState<string>('');
-  const [rememberMe, setRememberMe] = useState<boolean>(true);
 
   // Student Registration fields
   const [fullName, setFullName] = useState<string>('');
@@ -83,6 +82,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [faculty, setFaculty] = useState<string>('Faculty of Computing & Information Technology');
   const [signupEmail, setSignupEmail] = useState<string>('');
   const [signupPassword, setSignupPassword] = useState<string>('');
+  const [confirmSignupPassword, setConfirmSignupPassword] = useState<string>('');
 
   // Status & Feedback
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -140,6 +140,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    if (signupPassword.length < 8) {
+      setErrorMessage('Choose a password with at least 8 characters.');
+      return;
+    }
+    if (signupPassword !== confirmSignupPassword) {
+      setErrorMessage('The passwords do not match.');
+      return;
+    }
     setIsLoading(true);
 
     try {
@@ -260,22 +268,27 @@ export const AuthView: React.FC<AuthViewProps> = ({
       {/* PAGE 1: DEDICATED UNIFIED LOGIN PAGE                                      */}
       {/* ========================================================================= */}
       {currentPage === 'login' && (
-        <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
+        <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
+          <aside className="hidden lg:flex flex-col justify-between p-10 xl:p-12 bg-gradient-to-br from-emerald-800 via-emerald-700 to-teal-700 text-white min-h-[680px]">
+            <div>
+              <div className="w-16 h-16 rounded-2xl bg-white p-2 shadow-lg"><img src={OFFICIAL_LOGO_URL} alt="LASU" className="w-full h-full object-contain" /></div>
+              <p className="mt-10 text-xs uppercase tracking-[0.22em] text-emerald-100">Lagos State University</p>
+              <h1 className="mt-3 text-4xl xl:text-5xl font-bold leading-tight">Your academic journey, clearly guided.</h1>
+              <p className="mt-5 max-w-sm text-sm leading-6 text-emerald-50/90">One secure space for advising conversations, course progress, and result verification.</p>
+            </div>
+            <div className="space-y-3 text-sm text-emerald-50">
+              <p className="flex items-center gap-3"><span className="material-symbols-outlined">verified_user</span>Private, role-based access</p>
+              <p className="flex items-center gap-3"><span className="material-symbols-outlined">forum</span>Direct academic support</p>
+              <p className="flex items-center gap-3"><span className="material-symbols-outlined">school</span>Progress built around your cohort</p>
+            </div>
+          </aside>
+          <div className="p-6 sm:p-9 lg:p-10">
           {/* Header */}
           <div className="flex flex-col items-center text-center mb-6">
-            <div className="w-16 h-16 rounded-full overflow-hidden mb-3 border border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50 dark:bg-slate-800 p-1 flex items-center justify-center">
-              <img
-                src={OFFICIAL_LOGO_URL}
-                alt="LASU Advisor Logo"
-                className="w-full h-full object-contain rounded-full"
-              />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-              LASU Advisor
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
-              Academic Advising &amp; CGPA Audit Portal
-            </p>
+            <div className="lg:hidden w-14 h-14 rounded-2xl overflow-hidden mb-3 border border-slate-200 dark:border-slate-800 bg-white p-1.5 shadow-sm"><img src={OFFICIAL_LOGO_URL} alt="LASU Advisor" className="w-full h-full object-contain" /></div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">LASU Advisor</p>
+            <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Welcome back</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Sign in to continue to your academic portal.</p>
             <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-[11px] text-emerald-800 dark:text-emerald-300 font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Active Session: {currentAcademicSession}
@@ -322,8 +335,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </span>
                 <input
                   id="login-identifier-input"
-                  type="text"
+                  type={isSupabaseConfigured ? 'email' : 'text'}
                   required
+                  autoComplete="username"
                   value={identifier}
                   onChange={(e) => {
                     setIdentifier(e.target.value);
@@ -366,6 +380,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   id="login-password-input"
                   type="password"
                   required
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => {
                     setPassword(e.target.value);
@@ -375,20 +390,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2.5 pl-10 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 shadow-2xs"
                 />
               </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
-                  Remember session
-                </span>
-              </label>
             </div>
 
             <button
@@ -408,34 +409,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </button>
           </form>
 
-          {/* Dedicated Navigation Link to Create Account Portal */}
           <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
-            <p className="text-xs text-slate-600 dark:text-slate-400">
-              New to LASU Advisor?{' '}
-              {!isSupabaseConfigured && <a
-                href="#register"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigateTo('register-select');
-                }}
-                className="text-emerald-700 dark:text-emerald-400 font-bold hover:underline"
-              >
-                Create an Account →
-              </a>}
-            </p>
-
+            <p className="text-xs text-slate-600 dark:text-slate-400">New to LASU Advisor?</p>
+            <a href="#register-student" onClick={(e) => { e.preventDefault(); navigateTo('register-student'); }} className="mt-3 inline-flex items-center justify-center gap-2 w-full rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-3 text-sm font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/60 transition-colors">
+              <span className="material-symbols-outlined text-[18px]">school</span>
+              Create a student account
+              <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            </a>
             <div className="mt-3 flex items-center justify-center gap-3 text-[11px] text-slate-400 dark:text-slate-500">
-              <a
-                href="#register-student"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigateTo('register-student');
-                }}
-                className="hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1"
-              >
-                <span className="material-symbols-outlined text-[14px]">school</span>
-                Student Registration
-              </a>
               {!isSupabaseConfigured && <><span>•</span><a
                 href="#register-staff"
                 onClick={(e) => {
@@ -501,6 +482,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               </div>
             )}
           </div>}
+          </div>
         </div>
       )}
 
@@ -613,7 +595,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       {/* PAGE 3: DEDICATED STUDENT REGISTRATION PAGE                                */}
       {/* ========================================================================= */}
       {currentPage === 'register-student' && (
-        <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
+        <div className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-9 shadow-2xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
           {/* Breadcrumb Navigation */}
           <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800 text-xs">
             <a
@@ -630,6 +612,17 @@ export const AuthView: React.FC<AuthViewProps> = ({
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
               Student Registration
             </span>
+          </div>
+
+          <div className="mb-5 grid grid-cols-2 gap-2" aria-label="Registration progress">
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider font-bold text-emerald-700 dark:text-emerald-300">Step 1</p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-800 dark:text-slate-200">Create your account</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5">
+              <p className="text-[10px] uppercase tracking-wider font-bold text-slate-500 dark:text-slate-400">Step 2</p>
+              <p className="mt-0.5 text-xs font-semibold text-slate-700 dark:text-slate-300">Open your student portal</p>
+            </div>
           </div>
 
           {/* Header */}
@@ -676,6 +669,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 id="student-name-input"
                 type="text"
                 required
+                autoComplete="name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. Babatunde Fashola"
@@ -827,6 +821,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   id="student-email-input"
                   type="email"
                   required
+                  autoComplete="email"
                   value={signupEmail}
                   onChange={(e) => setSignupEmail(e.target.value)}
                   placeholder="student@lasu.edu.ng"
@@ -842,12 +837,19 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   id="student-password-input"
                   type="password"
                   required
+                  minLength={8}
+                  autoComplete="new-password"
                   value={signupPassword}
                   onChange={(e) => setSignupPassword(e.target.value)}
-                  placeholder="Min. 5 characters"
+                  placeholder="At least 8 characters"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
                 />
               </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Confirm Password</label>
+              <input id="student-confirm-password-input" type="password" required minLength={8} value={confirmSignupPassword} onChange={(e) => setConfirmSignupPassword(e.target.value)} autoComplete="new-password" placeholder="Re-enter your password" className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs" />
             </div>
 
             <button
@@ -884,7 +886,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
             <div>
               Staff member?{' '}
-              <a
+              {!isSupabaseConfigured ? <a
                 href="#register-staff"
                 onClick={(e) => {
                   e.preventDefault();
@@ -893,7 +895,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 className="text-slate-700 dark:text-slate-300 font-semibold hover:underline"
               >
                 Staff Registration →
-              </a>
+              </a> : <span className="font-medium text-slate-500">Staff accounts are issued by your faculty administrator.</span>}
             </div>
           </div>
         </div>
