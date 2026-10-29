@@ -6,7 +6,7 @@ This repository already contains the schema and RLS migration at `supabase/migra
 
 1. Create a Supabase project and save its database password somewhere secure.
 2. In **Project Settings → API**, copy the **Project URL** and the **anon/public key**.
-3. In **Authentication → URL Configuration**, set the production site URL and add local development URLs (for example `http://localhost:3000`) to the redirect allow list. Email verification links return to the app.
+3. In **Authentication → URL Configuration**, set **Site URL** to the production origin, for example `https://YOUR-SITE.netlify.app/` (do not leave it at localhost). Add the exact production origin to **Redirect URLs**, plus `http://localhost:3000/**` for local work and a Netlify preview pattern such as `https://**--YOUR-SITE.netlify.app/**` if previews are used. Signup passes the current app origin as `emailRedirectTo`, so Supabase must allow the production URL. If you customized the confirmation email template, use `{{ .RedirectTo }}` for the app return URL or keep the standard `{{ .ConfirmationURL }}` link.
 4. In **Authentication → Providers → Email**, enable email/password sign-in. Choose whether new students must confirm their email. When confirmation is enabled, signup shows a check-your-email message and the student signs in after confirming.
 5. Keep staff roles administrator-provisioned. Public signup deliberately creates student profiles only; allowing self-selected HOD/Dean roles would be an authorization vulnerability.
 
@@ -29,7 +29,7 @@ Restart the dev server after editing `.env`. Local development falls back to dem
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query**, paste the complete contents of `supabase/migrations/202610290001_lasu_advisor_live_data.sql`, and run it. It creates these tables, triggers, indexes, policies, and the private Storage bucket `result-documents`.
+Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, then `202610300001_backfill_student_profiles.sql`. The first creates the tables, triggers, indexes, policies, and private Storage bucket `result-documents`; the second repairs profiles for student accounts registered before the Auth trigger was installed.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|

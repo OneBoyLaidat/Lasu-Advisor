@@ -92,10 +92,22 @@ export async function signInAccount(identifier: string, password: string): Promi
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
   const { data, error } = signInResponse;
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    if (error.code === 'email_not_confirmed') {
+      return { success: false, error: 'Your email address is not confirmed yet. Open the latest LASU Advisor confirmation email, then try signing in again.' };
+    }
+    if (error.code === 'invalid_credentials') {
+      return { success: false, error: 'Email or password is incorrect. If you just registered, confirm your email from the latest verification message before signing in.' };
+    }
+    return { success: false, error: error.message };
+  }
   try {
     const profile = await getProfileForUser(data.user);
-    return profile ? { success: true, profile } : { success: false, error: 'Your account is signed in, but its profile is not set up. Contact your faculty administrator.' };
+    if (!profile) {
+      await client.auth.signOut();
+      return { success: false, error: 'Your email is confirmed, but the student profile was not created. Apply the LASU Advisor Supabase migration and check the on_auth_user_created_lasu_profile trigger, then try again.' };
+    }
+    return { success: true, profile };
   } catch (profileError) {
     await client.auth.signOut();
     return { success: false, error: profileError instanceof Error ? profileError.message : 'Could not load your profile.' };
@@ -112,20 +124,24 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
   if (data.role !== 'student') return { success: false, error: 'Staff accounts are provisioned by faculty administrators. Please request an invitation.' };
+  const emailRedirectTo = typeof window === 'undefined' ? undefined : new URL('/', window.location.origin).toString();
   let signupResponse: Awaited<ReturnType<typeof client.auth.signUp>>;
   try {
     signupResponse = await client.auth.signUp({
       email: data.email.trim().toLowerCase(),
       password: data.password,
-      options: { data: {
-        account_type: 'student',
-        full_name: data.name.trim(),
-        department: data.department,
-        faculty: data.faculty,
-        matric_no: data.matricNo,
-        level: data.level,
-        admission_session: data.admissionSession,
-      } },
+      options: {
+        emailRedirectTo,
+        data: {
+          account_type: 'student',
+          full_name: data.name.trim(),
+          department: data.department,
+          faculty: data.faculty,
+          matric_no: data.matricNo,
+          level: data.level,
+          admission_session: data.admissionSession,
+        },
+      },
     });
   } catch (connectionError) {
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
@@ -139,6 +155,24 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
     return profile ? { success: true, profile } : { success: false, error: 'Account created, but profile setup has not completed. Try signing in again shortly.' };
   } catch (profileError) {
     return { success: false, error: profileError instanceof Error ? profileError.message : 'Could not create your profile.' };
+  }
+}
+
+export async function resendSignupConfirmation(email: string): Promise<AuthResult> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) {
+    return { success: false, error: supabaseConfigurationError || 'Email confirmation is available for live accounts only.' };
+  }
+  const emailRedirectTo = typeof window === 'undefined' ? undefined : new URL('/', window.location.origin).toString();
+  try {
+    const { error } = await client.auth.resend({
+      type: 'signup',
+      email: email.trim().toLowerCase(),
+      options: { emailRedirectTo },
+    });
+    return error ? { success: false, error: error.message } : { success: true };
+  } catch (connectionError) {
+    return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
 }
 

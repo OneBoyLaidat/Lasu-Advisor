@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { OFFICIAL_LOGO_URL } from '../data/mockData';
 import { UserProfile, LASU_DEPARTMENTS, EntryMode } from '../types';
 import { getRegisteredAccounts } from '../lib/authService';
-import { sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';
+import { resendSignupConfirmation, sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   computeAcademicLevel,
@@ -88,6 +88,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [showDemoCredentials, setShowDemoCredentials] = useState<boolean>(false);
 
   // Auto-recalculate Academic Level whenever entryMode or admissionSession updates
@@ -104,11 +105,29 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setAdmissionSession(sess);
   };
 
+  const handleResendConfirmation = async () => {
+    if (!confirmationEmail) return;
+    setIsLoading(true);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const result = await resendSignupConfirmation(confirmationEmail);
+      if (!result.success) {
+        setErrorMessage(result.error || 'Could not resend the confirmation email. Please try again.');
+        return;
+      }
+      setSuccessMessage(`A new confirmation link has been sent to ${confirmationEmail}.`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // 1. Unified Login Handler
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setConfirmationEmail(null);
     setIsLoading(true);
 
     try {
@@ -140,6 +159,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+    setConfirmationEmail(null);
     if (signupPassword.length < 8) {
       setErrorMessage('Choose a password with at least 8 characters.');
       return;
@@ -170,9 +190,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
       }
 
       if (result.confirmationRequired) {
-        setSuccessMessage('Check your email to confirm your LASU Advisor account, then sign in.');
-        setCurrentPage('login');
-        window.location.hash = 'login';
+        setConfirmationEmail(signupEmail.trim().toLowerCase());
+        setSuccessMessage('Check your email to confirm your account.');
         return;
       }
       if (!result.profile) {
@@ -659,7 +678,41 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
           )}
 
-          {/* Registration Form (Strictly without result/transcript upload field) */}
+          {confirmationEmail ? (
+            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 p-5 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300">
+                <span className="material-symbols-outlined text-[26px]">mark_email_read</span>
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Check your email to confirm</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                We sent a confirmation link to <strong className="break-all text-slate-800 dark:text-slate-100">{confirmationEmail}</strong>.
+                Open it to verify your account. If it is not in your inbox, check your spam folder.
+              </p>
+              <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                The link returns you to this app. After confirmation, sign in with your email and password.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier(confirmationEmail);
+                  navigateTo('login');
+                }}
+                className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800"
+              >
+                Continue to sign in
+                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleResendConfirmation}
+                disabled={isLoading}
+                className="mt-3 block w-full text-xs font-semibold text-emerald-800 underline-offset-4 hover:underline disabled:opacity-60 dark:text-emerald-300"
+              >
+                {isLoading ? 'Sending…' : 'Resend confirmation email'}
+              </button>
+            </div>
+          ) : (
+          /* Registration Form (Strictly without result/transcript upload field) */
           <form onSubmit={handleStudentSignupSubmit} className="space-y-3.5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -868,6 +921,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
               )}
             </button>
           </form>
+          )}
 
           {/* Navigation Links */}
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
