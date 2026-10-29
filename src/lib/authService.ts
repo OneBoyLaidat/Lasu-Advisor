@@ -164,7 +164,7 @@ export function saveRegisteredAccounts(accounts: RegisteredAccount[]): void {
  * Propagates a newly assigned adviser to all registered student accounts in that session or level.
  */
 export function propagateAdviserAssignmentToStoredAccounts(
-  targetLevelOrSession: string,
+  cohort: { session: string; level: string; department: string },
   newAdviser: { id: string; name: string; email: string; avatarUrl: string; title?: string }
 ): number {
   const accounts = getRegisteredAccounts();
@@ -173,10 +173,11 @@ export function propagateAdviserAssignmentToStoredAccounts(
   const updated = accounts.map((acc) => {
     if (acc.role !== 'student') return acc;
 
-    const matchesLevel = acc.level && acc.level.toLowerCase().includes(targetLevelOrSession.toLowerCase());
-    const matchesSession = acc.admissionSession && acc.admissionSession.toLowerCase().includes(targetLevelOrSession.toLowerCase());
+    const matchesLevel = acc.level === cohort.level;
+    const matchesSession = acc.admissionSession === cohort.session;
+    const matchesDepartment = acc.department === cohort.department;
 
-    if (matchesLevel || matchesSession) {
+    if (matchesLevel && matchesSession && matchesDepartment) {
       updatedCount++;
       return {
         ...acc,
@@ -199,8 +200,9 @@ export function propagateAdviserAssignmentToStoredAccounts(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           adviserId: newAdviser.id,
-          level: targetLevelOrSession,
-          session: targetLevelOrSession,
+          level: cohort.level,
+          session: cohort.session,
+          department: cohort.department,
           studentLoad: updatedCount,
         }),
       }).catch(() => {

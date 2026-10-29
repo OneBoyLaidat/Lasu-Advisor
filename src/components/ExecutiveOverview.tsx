@@ -14,6 +14,7 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
   onOpenDeepFilterModal,
 }) => {
   const [selectedFaculty, setSelectedFaculty] = useState<string>('All Faculties');
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('All Departments');
 
   const distribution = [
     { label: '1st Class', value: '18%', height: '42%' },
@@ -151,9 +152,7 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Variance Against NUC Accreditation Thresholds</p>
             </div>
-            <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 rounded transition-colors">
-              <span className="material-symbols-outlined">more_horiz</span>
-            </button>
+            <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 rounded transition-colors"><span className="material-symbols-outlined">more_horiz</span></button>
           </div>
 
           <div className="overflow-x-auto">
@@ -227,9 +226,7 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Departmental Cumulative GPA Indicators</p>
             </div>
-            <button className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 p-1 rounded transition-colors">
-              <span className="material-symbols-outlined">more_horiz</span>
-            </button>
+            <select aria-label="Choose department" value={selectedDepartment} onChange={(e) => setSelectedDepartment(e.target.value)} className="text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-700 dark:text-slate-200"><option>All Departments</option>{DEPARTMENT_PERFORMANCE_LIST.map((d) => <option key={d.department}>{d.department}</option>)}</select>
           </div>
 
           <div className="overflow-x-auto">
@@ -248,7 +245,7 @@ export const ExecutiveOverview: React.FC<ExecutiveOverviewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs text-slate-800 dark:text-slate-200">
-                {DEPARTMENT_PERFORMANCE_LIST.map((dept, idx) => (
+                {DEPARTMENT_PERFORMANCE_LIST.filter((d) => selectedDepartment === 'All Departments' || d.department === selectedDepartment).map((dept, idx) => (
                   <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
                     <td className="p-4 font-semibold text-slate-900 dark:text-slate-100">{dept.department}</td>
                     <td className="p-4 text-slate-600 dark:text-slate-400 font-medium">{dept.hod}</td>

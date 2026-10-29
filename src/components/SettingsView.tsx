@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserProfile, LASU_DEPARTMENTS, ThemeMode } from '../types';
+import { UserProfile, ThemeMode } from '../types';
 
 interface SettingsViewProps {
   userProfile: UserProfile;
@@ -21,7 +21,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [name, setName] = useState(userProfile.name);
   const [email, setEmail] = useState(userProfile.email);
   const [phone, setPhone] = useState(userProfile.phone || '+234 803 456 7890');
-  const [department, setDepartment] = useState(userProfile.department);
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -32,24 +31,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       name,
       email,
       phone,
-      department,
     });
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
   };
 
   return (
-    <div className="space-y-6 max-w-4xl animate-in fade-in duration-300">
+    <div className="min-h-[calc(100vh-8rem)] w-full flex flex-col space-y-6 animate-in fade-in duration-300">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-          System &amp; Account Settings
+          Profile &amp; Preferences
         </h1>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-          Manage your institutional credentials, appearance themes, notification triggers, and database synchronization.
+          Manage your profile, appearance, and notification preferences.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 items-stretch">
         {/* Profile Card */}
         <div className="md:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col items-center text-center shadow-xs">
           <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-emerald-600 dark:border-emerald-500 p-1 mb-3 bg-slate-50 dark:bg-slate-800">
@@ -69,20 +67,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             <div className="flex justify-between">
               <span className="text-slate-500 dark:text-slate-400 font-medium">Matric / ID:</span>
               <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">
-                {userProfile.matricNo || userProfile.staffId || 'CSC/2024/001'}
+                {userProfile.matricNo || userProfile.staffId || '—'}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Frontend Stack:</span>
-              <span className="font-semibold text-slate-800 dark:text-slate-200">React 19 (SPA)</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400 font-medium">Backend Stack:</span>
-              <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
-                Node.js (Express API)
-              </span>
-            </div>
+            {userProfile.role === 'student' && userProfile.session && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Admission Session:</span><span className="font-semibold text-slate-800 dark:text-slate-200">{userProfile.session}</span></div>}
+            {userProfile.role !== 'student' && userProfile.staffId && <div className="flex justify-between"><span className="text-slate-500 dark:text-slate-400 font-medium">Staff ID:</span><span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{userProfile.staffId}</span></div>}
           </div>
         </div>
 
@@ -125,26 +114,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Department</label>
-                <div className="relative">
-                  <select
-                    id="settings-department-select"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 pr-8 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs appearance-none cursor-pointer"
-                  >
-                    {LASU_DEPARTMENTS.map((dept) => (
-                      <option key={dept} value={dept} className="dark:bg-slate-800">
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-[18px]">
-                    expand_more
-                  </span>
-                </div>
-              </div>
+              <div><label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Department</label><div className="w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-700 dark:text-slate-300">{userProfile.department}</div></div>
             </div>
 
             {/* Appearance / Dark Mode Section */}

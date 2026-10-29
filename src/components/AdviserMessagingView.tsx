@@ -61,7 +61,7 @@ export const AdviserMessagingView: React.FC<AdviserMessagingViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-            Advising Messages &amp; Student Inquiries
+            Messages
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
             Direct Peer-to-Peer Academic Inbox • Manual Human Replies (No AI Bots) • Level 300 Cohort
@@ -82,7 +82,7 @@ export const AdviserMessagingView: React.FC<AdviserMessagingViewProps> = ({
       </div>
 
       {/* Main Messaging Interface Container */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden flex flex-col md:flex-row min-h-[640px] max-h-[780px]">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden flex flex-col md:flex-row h-[calc(100vh-7rem)] min-h-[640px]">
         {/* Left Sidebar: Conversations List */}
         <div className="w-full md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 flex flex-col shrink-0 bg-slate-50/50 dark:bg-slate-900/60">
           {/* Search and Category Filter */}

@@ -36,37 +36,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Nudge Alert Notice if Adviser requested upload */}
-      {(hasNudgeNotice || !studentProfile.hasUploadedTranscript) && (
-        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
-          <div className="flex items-start gap-3.5">
-            <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0 border border-amber-300 dark:border-amber-700">
-              <span className="material-symbols-outlined text-[22px]">notifications_active</span>
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-amber-950 dark:text-amber-200 flex items-center gap-2">
-                Level Adviser Result Verification Notice
-                <span className="bg-amber-200/80 dark:bg-amber-800/60 text-amber-900 dark:text-amber-200 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">
-                  Action Required
-                </span>
-              </h3>
-              <p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-1 leading-relaxed max-w-2xl">
-                Dr. Sarah Jenkins has requested your official Fall 2024 academic result slip for session audit.
-                Please upload your PDF or portal screenshot to automatically extract your grades via OCR.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={onOpenTranscriptModal}
-            className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 transition-all shadow-sm shrink-0 w-full sm:w-auto justify-center"
-          >
-            <span className="material-symbols-outlined text-[16px]">upload_file</span>
-            Upload Result PDF
-          </button>
-        </div>
-      )}
-
       {/* Page Title & Context Bar */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div>
@@ -180,10 +149,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
               <span className="text-xl font-bold text-slate-900 dark:text-slate-100 leading-none font-mono">
-                {stats.passedUnits}
+                {filteredCourses.length}
               </span>
               <span className="text-[9px] text-slate-400 uppercase font-semibold tracking-wider mt-0.5">
-                Units
+                Number of Courses
               </span>
             </div>
           </div>
@@ -246,7 +215,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
       </div>
 
       {/* Middle Row: Table & Sidebars */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         {/* Main Data Table: Course Results (Spans 2 cols) */}
         <div className="lg:col-span-2">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col overflow-hidden h-full shadow-xs">
@@ -387,7 +356,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
 
         {/* Sidebar Widgets (Spans 1 col) */}
-        <div className="lg:col-span-1 space-y-6">
+        <div className="lg:col-span-1 space-y-6 h-full">
           {/* Level Adviser Widget */}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col relative shadow-xs">
             <div className="flex items-center gap-2 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
@@ -437,6 +406,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </div>
         </div>
       </div>
+      {/* Result and transcript compliance stays at the bottom of the profile page. */}
+      {(hasNudgeNotice || !studentProfile.hasUploadedTranscript) && (
+        <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
+          <div><h3 className="text-sm font-bold text-amber-950 dark:text-amber-200">Result and Transcript Compliance <span className="ml-2 text-[10px] uppercase">Action Required</span></h3><p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-1">Upload your official result slip for session audit and grade verification.</p></div>
+          <button onClick={onOpenTranscriptModal} className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm"><span className="material-symbols-outlined text-[16px]">upload_file</span>Upload Result PDF</button>
+        </div>
+      )}
     </div>
   );
 };

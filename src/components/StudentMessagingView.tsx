@@ -77,7 +77,7 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
       </div>
 
       {/* Full-Page, Full-Width Chat View (Assigned Level Advisor and Advising Protocol removed) */}
-      <div className="w-full flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden h-[660px]">
+      <div className="w-full flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden h-[calc(100vh-13rem)] min-h-[520px]">
         {/* Active Adviser Channel Header */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -95,7 +95,7 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
                   {adviserName}
                 </h3>
                 <span className="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300 dark:border-emerald-800">
-                  Assigned Level Adviser
+                  Level Adviser
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">

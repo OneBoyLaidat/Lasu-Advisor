@@ -208,6 +208,7 @@ export interface StudentConversation {
   lastMessage: string;
   lastMessageTime: string;
   unreadCount: number;
+  studentUnreadCount?: number;
   messages: ChatMessage[];
   archivedThreads?: ArchivedChatThread[];
   currentAdviserId?: string;

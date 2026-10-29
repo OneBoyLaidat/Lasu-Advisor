@@ -183,10 +183,10 @@ export function App() {
       return ['dashboard', 'messages', 'advising', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'hod') {
-      return ['dashboard', 'messages', 'departmental', 'advising', 'analytics', 'settings'].includes(tab);
+      return ['messages', 'departmental', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'dean') {
-      return ['dashboard', 'messages', 'executive', 'departmental', 'advising', 'analytics', 'settings'].includes(tab);
+      return ['executive', 'analytics', 'settings'].includes(tab);
     }
     return true;
   };
@@ -375,6 +375,7 @@ export function App() {
       senderRole: 'Level Adviser',
       text: replyText,
       timestamp: 'Just now',
+      isRead: false,
     };
 
     setConversations((prev) =>
@@ -384,7 +385,8 @@ export function App() {
             ...c,
             lastMessage: replyText,
             lastMessageTime: 'Just now',
-            unreadCount: 0,
+            unreadCount: (c.unreadCount || 0) + 1,
+            studentUnreadCount: (c.studentUnreadCount || 0) + 1,
             messages: [...c.messages, replyMsg],
           };
         }
@@ -407,6 +409,16 @@ export function App() {
       prev.map((c) => (c.id === id ? { ...c, unreadCount: 0 } : c))
     );
   };
+
+  useEffect(() => {
+    if (currentTab === 'messages' && userRole === 'student') {
+      setConversations((prev) => prev.map((c) =>
+        c.studentName === userProfile.name || c.studentId === userProfile.id
+          ? { ...c, studentUnreadCount: 0, messages: c.messages.map((m) => m.sender === 'adviser' ? { ...m, isRead: true } : m) }
+          : c
+      ));
+    }
+  }, [currentTab, userRole, userProfile.id, userProfile.name]);
 
   // Confirm booking
   const handleConfirmBooking = (appointment: Appointment) => {
@@ -439,7 +451,7 @@ export function App() {
     );
 
     // 2. Propagate to persistent storage accounts for all students in session/level
-    const propagatedCount = propagateAdviserAssignmentToStoredAccounts(session || level, {
+    const propagatedCount = propagateAdviserAssignmentToStoredAccounts({ session, level, department: targetAdv.department }, {
       id: targetAdv.id,
       name: targetAdv.name,
       email: targetAdv.email,
@@ -450,9 +462,9 @@ export function App() {
     // 3. Update advisees roster in state
     setAdvisees((prev) =>
       prev.map((a) => {
-        const matchesSession = a.admissionSession && a.admissionSession.toLowerCase().includes(session.toLowerCase());
-        const matchesLevel = a.level && a.level.toLowerCase().includes(level.toLowerCase());
-        if (matchesSession || matchesLevel) {
+        const matchesSession = a.admissionSession === session;
+        const matchesLevel = a.level === level;
+        if (a.department === targetAdv.department && matchesSession && matchesLevel) {
           return {
             ...a,
             assignedAdviserId: targetAdv.id,
@@ -466,8 +478,7 @@ export function App() {
     // 4. If current logged-in user is a student in this cohort, archive previous chat and switch adviser
     const isMatchingStudent =
       userProfile.role === 'student' &&
-      ((userProfile.admissionSession && userProfile.admissionSession.toLowerCase().includes(session.toLowerCase())) ||
-        (userProfile.level && userProfile.level.toLowerCase().includes(level.toLowerCase())));
+      userProfile.department === targetAdv.department && userProfile.admissionSession === session && userProfile.level === level;
 
     if (isMatchingStudent && userProfile.assignedAdviserId !== targetAdv.id) {
       const prevAdviserName = userProfile.assignedAdviserName || 'Dr. Sarah Jenkins';
@@ -521,9 +532,9 @@ export function App() {
     // 5. Update conversation records for Adviser inbox
     setConversations((prev) =>
       prev.map((c) => {
-        const matchesSession = c.admissionSession && c.admissionSession.toLowerCase().includes(session.toLowerCase());
-        const matchesLevel = c.level && c.level.toLowerCase().includes(level.toLowerCase());
-        if (matchesSession || matchesLevel) {
+        const matchesSession = c.admissionSession === session;
+        const matchesLevel = c.level === level;
+        if (c.department === targetAdv.department && matchesSession && matchesLevel) {
           const archiveThread: ArchivedChatThread = {
             id: `arch_conv_${Date.now()}_${c.id}`,
             adviserId: c.currentAdviserId || 'adv_sarah',
@@ -652,6 +663,15 @@ export function App() {
 
   // Check RBAC permission for current tab
   const canAccessCurrentTab = isTabAllowedForRole(currentTab, userRole);
+  const departmentAdvisees = advisees.filter((a) => a.department === userProfile.department);
+  const departmentConversations = conversations.filter((c) => c.department === userProfile.department);
+  const assignedAdviser = advisers.find((a) => a.email.toLowerCase() === userProfile.email.toLowerCase());
+  const advisorCohortAdvisees = userRole === 'lecturer'
+    ? (assignedAdviser?.assignedSession ? departmentAdvisees.filter((a) => a.admissionSession === assignedAdviser.assignedSession && a.level === assignedAdviser.assignedLevel) : [])
+    : departmentAdvisees;
+  const advisorCohortConversations = userRole === 'lecturer'
+    ? (assignedAdviser?.assignedSession ? departmentConversations.filter((c) => c.admissionSession === assignedAdviser.assignedSession && c.level === assignedAdviser.assignedLevel) : [])
+    : departmentConversations;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-emerald-600 selection:text-white transition-colors duration-200">
@@ -696,7 +716,11 @@ export function App() {
         userRole={userRole}
         isOpenMobile={isMobileNavOpen}
         setIsOpenMobile={setIsMobileNavOpen}
-        unreadMessagesCount={conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0)}
+        unreadMessagesCount={userRole === 'student'
+          ? conversations.filter((c) => c.studentId === userProfile.id).reduce((acc, c) => acc + (c.studentUnreadCount || 0), 0)
+          : userRole === 'lecturer'
+            ? advisorCohortConversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0)
+            : 0}
       />
 
       {/* Top Header Bar */}
@@ -717,7 +741,7 @@ export function App() {
       />
 
       {/* Main Workspace Body */}
-      <main className="md:ml-72 pt-20 sm:pt-24 pb-16 px-3 sm:px-6 md:px-10 max-w-7xl w-full mx-auto flex-1">
+      <main className={`md:ml-72 pt-20 sm:pt-24 pb-16 ${currentTab === 'messages' || currentTab === 'settings' ? 'px-0 max-w-none' : 'px-3 sm:px-6 md:px-10 max-w-7xl mx-auto'} w-full flex-1`}>
         {/* Strict RBAC Access Guard */}
         {!canAccessCurrentTab ? (
           <div className="py-16 text-center space-y-4 max-w-md mx-auto">
@@ -755,12 +779,12 @@ export function App() {
                   <LecturerDashboard
                     advisees={
                       globalSearchQuery.trim()
-                        ? advisees.filter(
+                        ? advisorCohortAdvisees.filter(
                             (a) =>
                               a.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
                               a.matricNo.toLowerCase().includes(globalSearchQuery.toLowerCase())
                           )
-                        : advisees
+                        : advisorCohortAdvisees
                     }
                     agendaItems={agendaItems}
                     onOpenIntervention={(studentName) => {
@@ -792,7 +816,8 @@ export function App() {
                   />
                 ) : userRole === 'hod' ? (
                   <DepartmentalControl
-                    advisers={advisers}
+                    department={userProfile.department}
+                    advisers={advisers.filter((a) => a.department === userProfile.department)}
                     courseRates={courseRates}
                     onOpenAssignAdvisorModal={(adv) => {
                       setSelectedAdviserToEdit(adv);
@@ -821,9 +846,17 @@ export function App() {
                     onOpenBookAppointment={() => setIsBookAppointmentOpen(true)}
                     onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
                   />
-                ) : (
-                  <AdviserMessagingView
-                    conversations={conversations}
+                ) : userRole === 'hod' ? (
+                    <div className="min-h-[calc(100vh-7rem)] w-full bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800 p-8">
+                      <h1 className="text-2xl font-bold">Messages</h1>
+                      <p className="mt-2 text-sm text-slate-500">HOD messaging is available for Lecturers and the Dean of the Faculty.</p>
+                      <div className="mt-6 grid gap-3 sm:grid-cols-2 max-w-2xl">
+                        {advisers.filter((a) => a.department === userProfile.department).map((a) => <a key={a.id} href={`mailto:${a.email}`} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-emerald-500"><div className="font-semibold">{a.name}</div><div className="text-xs text-slate-500">Lecturer • {a.department}</div></a>)}
+                        <a href={`mailto:${INITIAL_USER_PROFILES.dean.email}`} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 hover:border-emerald-500"><div className="font-semibold">Dean of the Faculty</div><div className="text-xs text-slate-500">Faculty of Computing &amp; Information Technology</div></a>
+                      </div>
+                    </div>
+                  ) : <AdviserMessagingView
+                    conversations={advisorCohortConversations}
                     activeConversationId={activeConversationId}
                     onSelectConversation={handleSelectConversation}
                     onSendReply={handleAdviserReply}
@@ -835,7 +868,7 @@ export function App() {
                     }}
                     onNudgeStudent={handleNudgeStudent}
                   />
-                )}
+                }
               </>
             )}
 
@@ -844,12 +877,12 @@ export function App() {
               <LecturerDashboard
                 advisees={
                   globalSearchQuery.trim()
-                    ? advisees.filter(
+                    ? advisorCohortAdvisees.filter(
                         (a) =>
                           a.name.toLowerCase().includes(globalSearchQuery.toLowerCase()) ||
                           a.matricNo.toLowerCase().includes(globalSearchQuery.toLowerCase())
                       )
-                    : advisees
+                    : advisorCohortAdvisees
                 }
                 agendaItems={agendaItems}
                 onOpenIntervention={(studentName) => {
@@ -884,7 +917,8 @@ export function App() {
             {/* Tab: Departmental (HOD, Dean only) */}
             {currentTab === 'departmental' && (userRole === 'hod' || userRole === 'dean') && (
               <DepartmentalControl
-                advisers={advisers}
+                department={userProfile.department}
+                advisers={advisers.filter((a) => a.department === userProfile.department)}
                 courseRates={courseRates}
                 onOpenAssignAdvisorModal={(adv) => {
                   setSelectedAdviserToEdit(adv);
@@ -938,7 +972,7 @@ export function App() {
       <AssignAdvisorModal
         isOpen={isAssignAdvisorOpen}
         onClose={() => setIsAssignAdvisorOpen(false)}
-        advisers={advisers}
+        advisers={userRole === 'hod' ? advisers.filter((a) => a.department === userProfile.department) : advisers}
         onSaveAssignment={handleSaveAdvisorAssignment}
         selectedAdviser={selectedAdviserToEdit}
       />

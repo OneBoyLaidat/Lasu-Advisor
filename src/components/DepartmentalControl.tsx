@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Adviser, CourseSuccessRate } from '../types';
 
 interface DepartmentalControlProps {
+  department: string;
   advisers: Adviser[];
   courseRates: CourseSuccessRate[];
   onOpenAssignAdvisorModal: (adviser?: Adviser) => void;
@@ -9,6 +10,7 @@ interface DepartmentalControlProps {
 }
 
 export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
+  department,
   advisers,
   courseRates,
   onOpenAssignAdvisorModal,
@@ -18,13 +20,13 @@ export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
   const [adviserSearch, setAdviserSearch] = useState<string>('');
 
   // Departmental cohorts by specific academic session names
-  const cohortSessions = [
+  const cohortSessions = department === 'Computer Science' ? [
     { session: '2026/2027 Session', level: '100L', students: 180, passRate: 88, color: 'bg-emerald-500', height: '88px' },
     { session: '2025/2026 Session', level: '200L', students: 165, passRate: 78, color: 'bg-teal-500', height: '110px' },
     { session: '2024/2025 Session', level: '300L', students: 142, passRate: 85, color: 'bg-emerald-600', height: '140px' },
     { session: '2023/2024 Session', level: '400L', students: 130, passRate: 91, color: 'bg-blue-600', height: '155px' },
     { session: '2022/2023 Session', level: '500L', students: 95, passRate: 96, color: 'bg-indigo-600', height: '170px' },
-  ];
+  ] : [];
 
   const filteredAdvisers = advisers.filter((adv) => {
     const matchesSession =
@@ -41,10 +43,10 @@ export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div>
           <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-1">
-            Computer Science Dept. • Faculty of Computing &amp; Information Technology
+            {department} Dept. • Faculty of Computing &amp; Information Technology
           </p>
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-            Departmental Control &amp; Session Administration
+            Departmental Control and Academic Oversight
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             Cohort progression tracking, session-based advisor allocation, and departmental grade distribution.
@@ -91,7 +93,7 @@ export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
 
           {/* Bar Chart Area with Specific Session Names */}
           <div className="h-48 w-full flex items-end justify-around border-b border-slate-100 dark:border-slate-800 pb-2 px-2">
-            {cohortSessions.map((cohort, idx) => (
+            {cohortSessions.length === 0 ? <p className="w-full text-center text-xs text-slate-400 self-center">No cohort analytics are available for this department yet.</p> : cohortSessions.map((cohort, idx) => (
               <div key={idx} className="flex flex-col items-center gap-1.5 group relative w-20">
                 <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
                   {cohort.passRate}% pass
@@ -150,7 +152,7 @@ export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
           <div className="space-y-2 mt-2">
             <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
               <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Total Cohort Sets</span>
-              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">5 Sessions</span>
+              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{cohortSessions.length} Sessions</span>
             </div>
             <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
               <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Allocated Advisers</span>
@@ -241,7 +243,7 @@ export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
       </div>
 
       {/* Course Success Rates */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
+      {department === 'Computer Science' && <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 shadow-xs">
         <div className="flex justify-between items-center mb-4">
           <div>
             <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -294,7 +296,7 @@ export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
     </div>
   );
 };

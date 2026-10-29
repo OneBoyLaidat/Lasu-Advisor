@@ -20,29 +20,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
   unreadMessagesCount = 0,
 }) => {
   // Strict Role-Based Navigation Items for authenticated userRole:
-  // - Student: Academic Overview, Analytics & Projections, Settings & Security
-  // - Lecturer: Adviser Oversight, Advising Messages, Cohort & Result Audit, Analytics & Projections, Settings & Security
-  // - HOD: Departmental Control, Advising Messages, Cohort & Result Audit, Analytics & Projections, Settings & Security
-  // - Dean: Executive Overview, Departmental Control, Advising Messages, Cohort & Result Audit, Analytics & Projections, Settings & Security
+  // Navigation is filtered by role so each user only sees authorized modules.
   const allNavItems = [
     {
       id: 'dashboard',
       label: userRole === 'student' ? 'Academic Overview' : 'Academic Oversight & Result Audit',
       icon: userRole === 'student' ? 'school' : 'fact_check',
-      roles: ['student', 'lecturer', 'hod', 'dean'],
+      roles: ['student', 'lecturer'],
     },
     {
       id: 'messages',
-      label: 'Advising Messages',
+      label: 'Messages',
       icon: 'forum',
       badge: unreadMessagesCount > 0 ? unreadMessagesCount : undefined,
       roles: ['student', 'lecturer', 'hod', 'dean'],
     },
     {
       id: 'departmental',
-      label: 'Departmental Control',
+      label: 'Departmental Control and Academic Oversight',
       icon: 'admin_panel_settings',
-      roles: ['hod', 'dean'],
+      roles: ['hod'],
     },
     {
       id: 'executive',
