@@ -135,7 +135,6 @@ export function App() {
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>([
     {
-    {
       id: 'n2',
       title: 'Academic Performance Audit Alert',
       desc: '3 students flagged for academic performance review in Computer Science.',
