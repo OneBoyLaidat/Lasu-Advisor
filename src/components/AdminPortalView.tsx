@@ -1,13 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, LASU_DEPARTMENTS } from '../types';
-import { ProfileMonogram } from './ProfileMonogram';
-import { getStaffDirectory, registerStaffAccount, resetPasswordDirectly, updateStaffMember, deleteStaffMember } from '../lib/liveDataService';
+import { loadStaffDirectory, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember } from '../lib/liveDataService';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface AdminPortalViewProps {
   userProfile: UserProfile;
   userRole: UserRole;
   onNavigateToTab?: (tab: string) => void;
 }
+
+const generateStaffPassword = (): string => {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghjkmnpqrstuvwxyz';
+  const digits = '23456789';
+  const symbols = '@#$!&*';
+  const all = upper + lower + digits + symbols;
+  const pick = (chars: string) => chars[crypto.getRandomValues(new Uint32Array(1))[0] % chars.length];
+  const password = [pick(upper), pick(lower), pick(digits), pick(symbols)];
+  while (password.length < 12) password.push(pick(all));
+  for (let index = password.length - 1; index > 0; index -= 1) {
+    const swapIndex = crypto.getRandomValues(new Uint32Array(1))[0] % (index + 1);
+    [password[index], password[swapIndex]] = [password[swapIndex], password[index]];
+  }
+  return password.join('');
+};
 
 export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   userProfile,
@@ -29,13 +45,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [formFaculty, setFormFaculty] = useState<string>(userProfile.faculty || 'Faculty of Computing & Information Technology');
   const [formLevel, setFormLevel] = useState<string>('100 Level (1AD)');
   const [formPhone, setFormPhone] = useState<string>('');
-  const [formPassword, setFormPassword] = useState<string>(() => {
-    const up='ABCDEFGHJKLMNPQRSTUVWXYZ',lo='abcdefghjkmnpqrstuvwxyz',di='23456789',sy='@#$!&*';
-    const all=up+lo+di+sy;
-    const p=[up[Math.floor(Math.random()*up.length)],lo[Math.floor(Math.random()*lo.length)],di[Math.floor(Math.random()*di.length)],sy[Math.floor(Math.random()*sy.length)]];
-    for(let i=4;i<10;i++)p.push(all[Math.floor(Math.random()*all.length)]);
-    return p.sort(()=>Math.random()-0.5).join('');
-  });
+  const [formPassword, setFormPassword] = useState<string>(generateStaffPassword);
   
   // Form submission feedback
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -58,13 +68,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
 
   // Load staff data on mount
-  const refreshStaffList = () => {
-    const list = getStaffDirectory();
-    setStaffList(list);
+  const refreshStaffList = async () => {
+    try { setStaffList(await loadStaffDirectory()); }
+    catch (error) { setModalError(error instanceof Error ? error.message : 'Could not load staff directory.'); }
   };
 
   useEffect(() => {
-    refreshStaffList();
+    void refreshStaffList();
   }, []);
 
   // Filtered staff list
@@ -115,7 +125,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         return;
       }
 
-      refreshStaffList();
+      await refreshStaffList();
       setCreatedCredentials({
         name: payload.name,
         email: payload.email,
@@ -133,11 +143,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       setFormStaffId('');
       setFormPhone('');
       // regenerate secure password for next registration
-      const up2='ABCDEFGHJKLMNPQRSTUVWXYZ',lo2='abcdefghjkmnpqrstuvwxyz',di2='23456789',sy2='@#$!&*';
-      const all2=up2+lo2+di2+sy2;
-      const p2=[up2[Math.floor(Math.random()*up2.length)],lo2[Math.floor(Math.random()*lo2.length)],di2[Math.floor(Math.random()*di2.length)],sy2[Math.floor(Math.random()*sy2.length)]];
-      for(let i=4;i<10;i++)p2.push(all2[Math.floor(Math.random()*all2.length)]);
-      setFormPassword(p2.sort(()=>Math.random()-0.5).join(''));
+      setFormPassword(generateStaffPassword());
     } catch (err) {
       setModalError(err instanceof Error ? err.message : 'Error registering staff member.');
     } finally {
@@ -147,7 +153,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
   const handleResetStaffPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetTargetStaff || !newStaffPassword || newStaffPassword.length < 8) {
+    if (!resetTargetStaff || newStaffPassword.length < 8 || !/[A-Z]/.test(newStaffPassword) || !/[a-z]/.test(newStaffPassword) || !/[0-9]/.test(newStaffPassword) || !/[^A-Za-z0-9\s]/.test(newStaffPassword)) {
       setResetFeedback('Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.');
       return;
     }
@@ -156,7 +162,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     setResetFeedback(null);
 
     try {
-      const res = await resetPasswordDirectly(resetTargetStaff.email, newStaffPassword);
+      const res = isSupabaseConfigured
+        ? await resetStaffCredentials(resetTargetStaff.id, newStaffPassword)
+        : await resetPasswordDirectly(resetTargetStaff.email, newStaffPassword);
       if (res.success) {
         setSuccessBanner(`Password updated successfully for ${resetTargetStaff.name}. They can now sign in with the new password.`);
         setTimeout(() => setSuccessBanner(null), 5000);
@@ -190,8 +198,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              <span className="material-symbols-outlined text-[14px]">admin_panel_settings</span>
-              Official Admin Portal
+              <span className="material-symbols-outlined text-[14px]">admin_panel_settings</span> Staff management
             </span>
             <span className="text-xs text-slate-400 dark:text-slate-500">•</span>
             <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
@@ -201,9 +208,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
             Admin Portal &amp; Staff User Management
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
-            Centralized portal for Head of Department (HOD), administrative teams, and lecturers to register staff, manage 1AD level advising cohorts, and provision immediate login credentials.
-          </p>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
@@ -397,7 +401,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 uppercase tracking-wider text-[10px] font-semibold">
-                <th className="py-3 px-3">Staff Member &amp; Monogram</th>
+                <th className="py-3 px-3">Staff member</th>
                 <th className="py-3 px-3">Staff ID &amp; Role</th>
                 <th className="py-3 px-3">Department</th>
                 <th className="py-3 px-3">Assigned 1AD Level</th>
@@ -417,7 +421,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                   <tr key={staff.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors">
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-3">
-                        <ProfileMonogram name={staff.name} sizeClassName="h-9 w-9 text-xs" />
+                        <div className={`h-9 w-9 shrink-0 rounded-full flex items-center justify-center text-white ${staff.role === 'dean' ? 'bg-indigo-600' : staff.role === 'hod' ? 'bg-teal-600' : 'bg-emerald-600'}`} title={`${staff.role} account`}>
+                          <span className="material-symbols-outlined text-[18px]">{staff.role === 'dean' ? 'account_balance' : staff.role === 'hod' ? 'domain' : 'school'}</span>
+                        </div>
                         <div>
                           <p className="font-bold text-slate-900 dark:text-slate-100">{staff.name}</p>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{staff.email}</p>
@@ -474,14 +480,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           <span className="material-symbols-outlined text-[14px]">lock_reset</span>
                           <span>Reset Pass</span>
                         </button>
-                        <button
+                        {!isSupabaseConfigured && <button
                           type="button"
                           onClick={() => handleDeleteStaff(staff)}
                           className="p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
                           title="Deactivate staff record"
                         >
                           <span className="material-symbols-outlined text-[16px]">delete</span>
-                        </button>
+                        </button>}
                       </div>
                     </td>
                   </tr>
@@ -663,8 +669,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                     >
                       <option value="lecturer">Lecturer / Level Adviser</option>
-                      <option value="hod">Head of Department (HOD)</option>
-                      <option value="dean">Dean of Faculty</option>
+                      {userRole !== 'hod' && <option value="hod">Head of Department (HOD)</option>}
+                      {userRole === 'admin' && <option value="dean">Dean of Faculty</option>}
                     </select>
                   </div>
 
@@ -694,6 +700,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <select
                       value={formDept}
                       onChange={(e) => setFormDept(e.target.value)}
+                      disabled={userRole === 'hod'}
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                     >
                       {LASU_DEPARTMENTS.map((dept) => (
@@ -724,13 +731,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       </label>
                       <button
                         type="button"
-                        onClick={() => {
-                          const up='ABCDEFGHJKLMNPQRSTUVWXYZ',lo='abcdefghjkmnpqrstuvwxyz',di='23456789',sy='@#$!&*';
-                          const all=up+lo+di+sy;
-                          const p=[up[Math.floor(Math.random()*up.length)],lo[Math.floor(Math.random()*lo.length)],di[Math.floor(Math.random()*di.length)],sy[Math.floor(Math.random()*sy.length)]];
-                          for(let i=4;i<10;i++)p.push(all[Math.floor(Math.random()*all.length)]);
-                          setFormPassword(p.sort(()=>Math.random()-0.5).join(''));
-                        }}
+                        onClick={() => setFormPassword(generateStaffPassword())}
                         className="text-[11px] text-emerald-600 hover:underline cursor-pointer"
                       >
                         Generate Random

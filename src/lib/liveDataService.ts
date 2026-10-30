@@ -20,6 +20,7 @@ type ProfileRow = {
   has_uploaded_transcript?: boolean | null;
   transcript_file_name?: string | null;
   result_prompt_dismissed_semester?: string | null;
+  must_change_password?: boolean | null;
 };
 
 const profileFromRow = (row: ProfileRow): UserProfile => ({
@@ -38,6 +39,7 @@ const profileFromRow = (row: ProfileRow): UserProfile => ({
   hasUploadedTranscript: row.has_uploaded_transcript || false,
   resultPromptDismissedSemester: row.result_prompt_dismissed_semester || undefined,
   transcriptFileName: row.transcript_file_name || undefined,
+  mustChangePassword: row.must_change_password || false,
 });
 
 const profileToRow = (profile: UserProfile) => ({
@@ -255,7 +257,8 @@ export async function loadStudentAdvisers(profile: UserProfile): Promise<Adviser
     .in('user_id', adviserIds);
   if (adviserError) throw adviserError;
   const byId = new Map((adviserProfiles || []).map((adviser) => [adviser.user_id, adviser]));
-  const advisers = assignments.flatMap((assignment) => {
+  const orderedAssignments = [...assignments].sort((a, b) => Number(b.level.match(/^\d+/)?.[0] || 0) - Number(a.level.match(/^\d+/)?.[0] || 0));
+  const advisers = orderedAssignments.flatMap((assignment) => {
     const adviser = byId.get(assignment.adviser_id);
     if (!adviser) return [];
     return [{
@@ -532,32 +535,78 @@ export async function resetPasswordDirectly(
 export async function registerStaffAccount(
   data: ManualStaffRegistrationPayload
 ): Promise<AuthResult & { generatedPassword?: string }> {
-  const localResult = registerStaffManually(data);
-  if (!localResult.success) return localResult;
-
   if (isSupabaseConfigured) {
     const client = getSupabaseClient();
-    if (client) {
-      try {
-        await client.from('profiles').upsert({
-          user_id: localResult.profile?.id || crypto.randomUUID(),
-          full_name: data.name.trim(),
-          email: data.email.trim().toLowerCase(),
-          role: data.role,
-          department: data.department,
-          faculty: data.faculty,
-          staff_id: data.staffId.trim().toUpperCase(),
-          level: data.assignedLevel || null,
-          phone: data.phone || null,
-        });
-      } catch (err) {
-        console.warn('Could not sync staff profile to Supabase directly:', err);
-      }
+    if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+    const { data: sessionData, error: sessionError } = await client.auth.getSession();
+    if (sessionError || !sessionData.session?.access_token) return { success: false, error: 'Sign in with an authorized administrator account before registering staff.' };
+    try {
+      const response = await fetch('/.netlify/functions/admin-create-staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
+        body: JSON.stringify({ ...data, password: data.password || '' }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) return { success: false, error: result.error || 'Staff registration failed.' };
+      const profileRow = result.staff;
+      const profile: UserProfile = {
+        id: profileRow.id, name: profileRow.full_name, email: profileRow.email, role: profileRow.role,
+        department: profileRow.department, faculty: profileRow.faculty, staffId: profileRow.staff_id,
+        level: profileRow.level || undefined, phone: profileRow.phone || undefined, avatarUrl: '', mustChangePassword: true,
+      };
+      return { success: true, profile, generatedPassword: data.password };
+    } catch (error) {
+      return { success: false, error: describeSupabaseConnectionError(error) };
     }
   }
-  return localResult;
+  return registerStaffManually(data);
+}
+
+export async function loadStaffDirectory(): Promise<StaffMember[]> {
+  if (!isSupabaseConfigured) return getStaffDirectory();
+  const client = getSupabaseClient();
+  if (!client) return [];
+  const { data, error } = await client.from('profiles')
+    .select('user_id,full_name,email,role,department,faculty,staff_id,level,admission_session,phone,created_at')
+    .in('role', ['lecturer', 'hod', 'dean']);
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.user_id, name: row.full_name, email: row.email, staffId: row.staff_id || '',
+    role: row.role, department: row.department, faculty: row.faculty,
+    assignedLevel: row.level || undefined, assignedSession: row.admission_session || undefined,
+    phone: row.phone || undefined, avatarUrl: '', status: 'Active',
+    dateRegistered: row.created_at ? new Date(row.created_at).toLocaleDateString() : '',
+  }));
+}
+
+export async function updateOwnPassword(password: string): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+  const { data, error } = await client.auth.getSession();
+  if (error || !data.session?.access_token) return { success: false, error: 'Sign in again to update your password.' };
+  try {
+    const response = await fetch('/.netlify/functions/staff-complete-password-change', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
+      body: JSON.stringify({ password }),
+    });
+    const result = await response.json();
+    return response.ok && result.success ? { success: true } : { success: false, error: result.error || 'Could not update your password.' };
+  } catch (error) { return { success: false, error: describeSupabaseConnectionError(error) }; }
+}
+
+export async function resetStaffCredentials(staffId: string, password: string): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+  const { data, error } = await client.auth.getSession();
+  if (error || !data.session?.access_token) return { success: false, error: 'Sign in again before resetting staff credentials.' };
+  try {
+    const response = await fetch('/.netlify/functions/admin-reset-staff-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
+      body: JSON.stringify({ staffId, password }),
+    });
+    const result = await response.json();
+    return response.ok && result.success ? { success: true } : { success: false, error: result.error || 'Could not reset staff password.' };
+  } catch (error) { return { success: false, error: describeSupabaseConnectionError(error) }; }
 }
 
 export { getStaffDirectory, updateStaffMember, deleteStaffMember, resetAccountPassword, clearMustChangePassword };
-
-export { clearMustChangePassword } from './authService';

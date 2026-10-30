@@ -17,7 +17,7 @@ export const getProfileInitials = (name: string): string => {
 
 /**
  * Institutional Signature Profile Monogram / Branding
- * Pure black background with elegant calligraphy cursive monogram typography.
+ * LASU green branding with elegant calligraphy cursive monogram typography.
  * Kept strictly uniform across Settings, Security, Background, Sidebar, and Header.
  */
 export const ProfileMonogram: React.FC<ProfileMonogramProps> = ({
@@ -31,7 +31,7 @@ export const ProfileMonogram: React.FC<ProfileMonogramProps> = ({
     <div
       aria-label={`${name || 'LASU Advisor'} profile`}
       title={name || 'LASU Advisor'}
-      className={`${sizeClassName} shrink-0 rounded-full bg-black border border-slate-700/80 ring-1 ring-white/10 shadow-md flex items-center justify-center text-white select-none transition-transform duration-150 ${className}`}
+      className={`${sizeClassName} shrink-0 rounded-full bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 border border-emerald-200/40 ring-1 ring-white/20 shadow-md flex items-center justify-center text-white select-none transition-transform duration-150 ${className}`}
     >
       <span
         className="font-normal italic tracking-wider leading-none text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"

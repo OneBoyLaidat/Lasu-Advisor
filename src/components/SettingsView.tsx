@@ -71,8 +71,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setPasswordStatus({ type: 'error', message: 'Password must include at least one number.' });
       return;
     }
-    if (!/[!@#$%^&*()_+-=[]{}|;:,.<>?]/.test(newPassword)) {
-      setPasswordStatus({ type: 'error', message: 'Password must include at least one special character (e.g. !@#$).',
+    if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(newPassword)) {
+      setPasswordStatus({ type: 'error', message: 'Password must include at least one special character (e.g. !@#$).' });
       return;
     }
 
@@ -110,11 +110,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       {/* Page Header */}
       <div className="pb-4 border-b border-slate-200 dark:border-slate-800">
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-          Profile, Security &amp; Background
+          Profile &amp; Security
         </h1>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          Manage your personal details, independent credential &amp; password resets, and view your institutional academic background.
-        </p>
       </div>
 
       {/* Navigation Tabs for Settings, Security, and Background */}
@@ -129,7 +126,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">tune</span>
-          <span>General Settings &amp; Appearance</span>
+          <span>Settings</span>
         </button>
 
         <button
@@ -142,7 +139,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">lock_reset</span>
-          <span>Security &amp; Password Reset</span>
+          <span>Security</span>
         </button>
 
         <button
@@ -155,7 +152,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           }`}
         >
           <span className="material-symbols-outlined text-[18px]">badge</span>
-          <span>Institutional Background</span>
+          <span>Academic profile</span>
         </button>
       </div>
 
@@ -167,25 +164,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{userProfile.name}</h3>
           
-          <div className="mt-1 flex items-center gap-1.5">
-            <span className="px-2 py-0.5 rounded-md text-[10px] uppercase font-bold tracking-wider bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300">
-              {userProfile.role === 'student' ? 'Student' : userProfile.role === 'hod' ? 'Head of Department' : userProfile.role === 'dean' ? 'Dean of Faculty' : 'Lecturer / 1AD Adviser'}
-            </span>
-            {userProfile.level && (
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                {userProfile.level}
-              </span>
-            )}
-          </div>
+          {userProfile.level && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{userProfile.level}</p>}
 
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">{userProfile.department}</p>
           <p className="text-[11px] text-slate-400 dark:text-slate-500">{userProfile.faculty}</p>
 
           <div className="mt-5 w-full pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5 text-xs text-left">
             <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">{userProfile.role === 'student' ? 'Matric Number:' : 'Staff ID:'}</span>
+              <span className="text-slate-500 dark:text-slate-400">{userProfile.role === 'student' ? 'Matric number:' : 'Staff ID:'}</span>
               <span className="font-mono font-semibold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded">
-                {userProfile.matricNo || userProfile.staffId || '—'}
+                {(userProfile.role === 'student' ? userProfile.matricNo : userProfile.staffId) || '—'}
               </span>
             </div>
 
@@ -433,7 +421,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     Independent Credential Management Policy
                   </div>
                   <p>
-                    Resetting your password updates your account in both live database sessions and local authenticators. Both students (using Matric No) and staff (using Staff ID or Email) can authenticate immediately with the new password.
+                    Use at least 8 characters with uppercase, lowercase, a number, and a symbol.
                   </p>
                 </div>
 
@@ -492,10 +480,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-1">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                    {userProfile.role === 'student' ? 'Matriculation Number' : 'Staff ID'}
+                    {userProfile.role === 'student' ? 'Matric number' : 'Staff ID'}
                   </span>
                   <p className="font-mono font-bold text-slate-900 dark:text-slate-100 text-sm">
-                    {userProfile.matricNo || userProfile.staffId || 'Pending Assignment'}
+                    {(userProfile.role === 'student' ? userProfile.matricNo : userProfile.staffId) || '—'}
                   </p>
                   <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
                     <span className="material-symbols-outlined text-[13px]">verified</span>
@@ -516,11 +504,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              {/* Advising or Oversight Relationship Card – only shown when adviser is assigned */}
+              {/* Show an adviser only after the database has an assignment. */}
               {userProfile.role === 'student' && userProfile.assignedAdviserId ? (
                 <div className="p-4 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <ProfileMonogram name={userProfile.assignedAdviserName || 'Adviser'} sizeClassName="w-10 h-10 text-xs" />
+                    <ProfileMonogram name={userProfile.assignedAdviserName || ''} sizeClassName="w-10 h-10 text-xs" />
                     <div>
                       <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block">
                         Assigned Level Adviser (1AD)
@@ -537,7 +525,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     Active Advisory
                   </span>
                 </div>
-              ) : (
+              ) : userProfile.role !== 'student' ? (
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <ProfileMonogram name={userProfile.name} sizeClassName="w-10 h-10 text-xs" />
@@ -557,7 +545,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     Authorized Staff
                   </span>
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </div>

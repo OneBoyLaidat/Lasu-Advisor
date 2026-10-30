@@ -93,8 +93,8 @@ export const Header: React.FC<HeaderProps> = ({
         )}
 
         
-        {/* Dedicated Admin Portal button for authorized personnel (HOD, Team, Lecturers, Deans) */}
-        {(userRole === 'hod' || userRole === 'lecturer' || userRole === 'dean' || userRole === 'admin') && onOpenAdminPortal && (
+        {/* System administrator entry to the staff portal */}
+        {userRole === 'admin' && onOpenAdminPortal && (
           <button
             type="button"
             id="header-admin-portal-btn"
@@ -263,7 +263,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
 
                 <div className="py-2 flex flex-col gap-1 text-xs text-slate-700 dark:text-slate-300">
-                  {(userRole === 'hod' || userRole === 'lecturer' || userRole === 'dean' || userRole === 'admin') && onOpenAdminPortal && (
+                  {userRole === 'admin' && onOpenAdminPortal && (
                     <button
                       onClick={() => {
                         onOpenAdminPortal();

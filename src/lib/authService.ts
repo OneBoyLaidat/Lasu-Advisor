@@ -349,7 +349,7 @@ export function registerNewUser(data: {
   if (!cleanId) {
     return {
       success: false,
-      error: data.role === 'student' ? 'Matriculation Number is required.' : 'Staff ID is required.',
+      error: data.role === 'student' ? 'Matric number is required.' : 'Staff ID is required.',
     };
   }
 

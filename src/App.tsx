@@ -44,7 +44,7 @@ import { AuthView } from './components/AuthView';
 import { SettingsView } from './components/SettingsView';
 import { AdminPortalView } from './components/AdminPortalView';
 import { propagateAdviserAssignmentToStoredAccounts } from './lib/authService';
-import { getCurrentProfile, loadAcademicAnalytics, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, loadStudentAdvisers, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistResultPromptDismissal, persistTranscript, persistUserProfile, signOutAccount, clearMustChangePassword } from './lib/liveDataService';
+import { getCurrentProfile, loadAcademicAnalytics, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, loadStudentAdvisers, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistResultPromptDismissal, persistTranscript, persistUserProfile, signOutAccount, clearMustChangePassword, resetPasswordDirectly, updateOwnPassword } from './lib/liveDataService';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
 import { getCurrentSemesterKey } from './lib/academicUtils';
 
@@ -100,7 +100,7 @@ export function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(isSupabaseConfigured);
   const [userRole, setUserRole] = useState<UserRole>('student');
-  const [currentTab, setCurrentTab] = useState<string>('dashboard');
+  const [currentTab, setCurrentTab] = useState<string>(() => typeof window !== 'undefined' && window.location.pathname === '/admin-portal' ? 'admin' : 'dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
@@ -181,6 +181,44 @@ export function App() {
   const [isForceUpdating, setIsForceUpdating] = useState<boolean>(false);
 
   useEffect(() => {
+    const handleHistoryChange = () => setCurrentTab(window.location.pathname === '/admin-portal' ? 'admin' : 'dashboard');
+    window.addEventListener('popstate', handleHistoryChange);
+    return () => window.removeEventListener('popstate', handleHistoryChange);
+  }, []);
+
+  const openAdminPortal = () => {
+    window.history.pushState({}, '', '/admin-portal');
+    setCurrentTab('admin');
+  };
+
+  const handleFirstPasswordUpdate = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setForcePasswordError(null);
+    if (forceNewPassword.length < 8 || !/[A-Z]/.test(forceNewPassword) || !/[a-z]/.test(forceNewPassword) || !/[0-9]/.test(forceNewPassword) || !/[^A-Za-z0-9\s]/.test(forceNewPassword)) {
+      setForcePasswordError('Use at least 8 characters with uppercase, lowercase, a number, and a symbol.');
+      return;
+    }
+    if (forceNewPassword !== forceConfirmPassword) {
+      setForcePasswordError('The passwords do not match.');
+      return;
+    }
+    setIsForceUpdating(true);
+    try {
+      const result = isSupabaseConfigured
+        ? await updateOwnPassword(forceNewPassword)
+        : await resetPasswordDirectly(userProfile.email, forceNewPassword);
+      if (!result.success) { setForcePasswordError(result.error || 'Could not update your password.'); return; }
+      clearMustChangePassword(userProfile.id);
+      setUserProfile((previous) => ({ ...previous, mustChangePassword: false }));
+      setShowForcePasswordChange(false);
+      setForceNewPassword('');
+      setForceConfirmPassword('');
+    } catch (error) {
+      setForcePasswordError(error instanceof Error ? error.message : 'Could not update your password.');
+    } finally { setIsForceUpdating(false); }
+  };
+
+  useEffect(() => {
     if (!isSupabaseConfigured) return;
     let active = true;
     getCurrentProfile().then((profile) => {
@@ -188,8 +226,11 @@ export function App() {
       if (profile) {
         setUserProfile(profile);
         setUserRole(profile.role);
+        if (profile.mustChangePassword) setShowForcePasswordChange(true);
         setActiveStudentAdviserEmail('');
-        setCurrentTab(profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
+        const adminPath = window.location.pathname === '/admin-portal' && profile.role === 'admin';
+        if (window.location.pathname === '/admin-portal' && !adminPath) window.history.replaceState({}, '', '/');
+        setCurrentTab(adminPath ? 'admin' : profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
         setCourseResults([]);
         setStudentStats(EMPTY_STUDENT_STATS);
         setHasNudgeNotice(false);
@@ -377,15 +418,15 @@ export function App() {
       return ['dashboard', 'messages', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'lecturer') {
-      return ['dashboard', 'messages', 'advising', 'analytics', 'settings', 'admin'].includes(tab);
+      return ['dashboard', 'messages', 'advising', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'hod') {
-      return ['messages', 'departmental', 'analytics', 'settings', 'admin'].includes(tab);
+      return ['messages', 'departmental', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'dean') {
-      return ['messages', 'executive', 'analytics', 'settings', 'admin'].includes(tab);
+      return ['messages', 'executive', 'analytics', 'settings'].includes(tab);
     }
-    return role === 'admin' && ['dashboard', 'messages', 'departmental', 'executive', 'analytics', 'settings'].includes(tab);
+    return role === 'admin' && ['dashboard', 'messages', 'departmental', 'executive', 'analytics', 'settings', 'admin'].includes(tab);
   };
 
   // Sync profile & enforce RBAC when role changes
@@ -934,6 +975,7 @@ export function App() {
         onLoginSuccess={(profile) => {
           setUserProfile(profile);
           setUserRole(profile.role);
+          setShowForcePasswordChange(Boolean(profile.mustChangePassword));
           setCourseResults([]);
           setStudentStats(EMPTY_STUDENT_STATS);
           setStudentAdvisers([]);
@@ -943,7 +985,12 @@ export function App() {
           setActiveStaffContactEmail('');
           setActiveStudentAdviserEmail('');
           setHasNudgeNotice(false);
-          if (profile.role === 'student' || profile.role === 'lecturer') {
+          if (window.location.pathname === '/admin-portal' && profile.role === 'admin') {
+            setCurrentTab('admin');
+          } else if (window.location.pathname === '/admin-portal') {
+            window.history.replaceState({}, '', '/');
+            setCurrentTab(profile.role === 'student' || profile.role === 'lecturer' ? 'dashboard' : profile.role === 'hod' ? 'departmental' : 'executive');
+          } else if (profile.role === 'student' || profile.role === 'lecturer') {
             setCurrentTab('dashboard');
           } else if (profile.role === 'hod') {
             setCurrentTab('departmental');
@@ -1035,7 +1082,7 @@ export function App() {
         notifications={notifications}
         onClearNotifications={() => setNotifications([])}
         onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
-        onOpenAdminPortal={() => setCurrentTab('admin')}
+        onOpenAdminPortal={openAdminPortal}
         isDark={isDark}
         onToggleDark={handleToggleDark}
         sidebarExpanded={isSidebarExpanded}
@@ -1130,7 +1177,7 @@ export function App() {
                       setIsAssignAdvisorOpen(true);
                     }}
                     onOpenExportReportModal={() => setIsExportReportOpen(true)}
-                onOpenAdminPortal={() => setCurrentTab('admin')}
+                onOpenAdminPortal={openAdminPortal}
                   />
                 ) : (
                   <ExecutiveOverview
@@ -1250,8 +1297,8 @@ export function App() {
 
             {/* Tab: Settings */}
             
-            {/* Tab: Admin Portal (HOD, Team, Lecturers, Dean) */}
-            {currentTab === 'admin' && (userRole === 'hod' || userRole === 'lecturer' || userRole === 'dean' || userRole === 'admin') && (
+            {/* Tab: system administrator portal */}
+            {currentTab === 'admin' && userRole === 'admin' && (
               <AdminPortalView
                 userProfile={userProfile}
                 userRole={userRole}
@@ -1273,6 +1320,35 @@ export function App() {
         )}
       </main>
 
+      {showForcePasswordChange && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/75 p-4 backdrop-blur-sm">
+          <form onSubmit={handleFirstPasswordUpdate} className="w-full max-w-md space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-gradient-to-br from-emerald-600 to-teal-800 text-white">
+                <span className="material-symbols-outlined">lock_reset</span>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Set a new password</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Required before you continue.</p>
+              </div>
+            </div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              New password
+              <input autoFocus required type="password" minLength={8} autoComplete="new-password" value={forceNewPassword} onChange={(e) => setForceNewPassword(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
+            </label>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Confirm password
+              <input required type="password" minLength={8} autoComplete="new-password" value={forceConfirmPassword} onChange={(e) => setForceConfirmPassword(e.target.value)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800" />
+            </label>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">At least 8 characters, including uppercase, lowercase, a number, and a symbol.</p>
+            {forcePasswordError && <p role="alert" className="rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">{forcePasswordError}</p>}
+            <button disabled={isForceUpdating} type="submit" className="w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800 disabled:opacity-60">
+              {isForceUpdating ? 'Updating…' : 'Update password'}
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* Interactive Modals */}
       <BookAppointmentModal
         isOpen={isBookAppointmentOpen}
@@ -1280,7 +1356,7 @@ export function App() {
         onConfirmBooking={handleConfirmBooking}
         studentName={userProfile.name}
         studentId={userProfile.id}
-        adviserName={currentStudentAdviser?.name || 'Not assigned'}
+        adviserName={currentStudentAdviser?.name || ''}
       />
 
       <InterventionModal

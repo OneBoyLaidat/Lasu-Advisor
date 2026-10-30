@@ -211,7 +211,7 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
               <thead>
                 <tr className="text-slate-500 dark:text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50">
                   <th className="py-2.5 px-3 font-semibold">Student Name</th>
-                  <th className="py-2.5 px-3 font-semibold">Matric No.</th>
+                  <th className="py-2.5 px-3 font-semibold">Matric number</th>
                   <th className="py-2.5 px-3 font-semibold text-center">CGPA</th>
                   <th className="py-2.5 px-3 font-semibold">Result Upload</th>
                   <th className="py-2.5 px-3 font-semibold text-right">Adviser Action</th>

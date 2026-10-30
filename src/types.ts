@@ -37,8 +37,8 @@ export interface UserProfile {
   assignedAdviserAvatar?: string;
   assignedAdviserTitle?: string;
   archivedChats?: ArchivedChatThread[];
-}  mustChangePassword?: boolean;
-}}
+  mustChangePassword?: boolean;
+}
 
 export interface CourseResult {
   code: string;

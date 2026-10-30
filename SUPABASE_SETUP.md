@@ -25,18 +25,20 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the frontend host's buil
 
 `GEMINI_API_KEY` is server-only and is used by `/api/ocr/transcript` in `server.ts` locally and `netlify/functions/ocr-transcript.mjs` on Netlify when a PDF has no extractable text. Never prefix it with `VITE_`. Scanned PDFs sent through the Netlify function must be 4 MB or smaller because the function request includes base64 expansion. It is not needed for ordinary text-based PDFs. `APP_URL` is for deployment configuration and is not used by the browser Supabase client.
 
+For Netlify staff provisioning, also set these **function environment variables** in Site configuration → Environment variables: `SUPABASE_URL` (the Project URL), `SUPABASE_ANON_KEY` (the anon/publishable key), and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role/secret key). These are read only by `netlify/functions/admin-create-staff.mjs`. Keep the service role key server-side; never add a `VITE_` prefix. Deploy the function after setting them.
+
 Restart the dev server after editing `.env`. Local development falls back to demo authentication/data when either Supabase frontend variable is missing. Production builds fail closed with a setup message instead of silently creating demo accounts. An empty `.env.example` does not connect a project.
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, then `202610300003_admin_staff_management.sql`. The first creates the tables, triggers, indexes, policies, and private Storage bucket `result-documents`; the second repairs profiles for student accounts registered before the Auth trigger was installed; the third enables semester-based result prompts and current/past adviser messaging; the fourth enables centralized Admin Portal staff management and 1AD adviser mapping.
+Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, `202610300003_admin_staff_management.sql`, then `202610300004_staff_credentials.sql`. The last migration adds the first-login password flag, role check, and staff provisioning permission helper.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|
 | `profiles` | `user_id` | `uuid` PK, FK to `auth.users.id` | Supabase Auth identity |
 | | `full_name` | `text` | Display name; compared with the OCR result name |
 | | `email` | `text` unique | Account email |
-| | `role` | `text` (`student`, `lecturer`, `hod`, `dean`) | Authorization role |
+| | `role` | `text` (`student`, `lecturer`, `hod`, `dean`, `admin`) | Authorization role |
 | | `department`, `faculty` | `text` | Scope for academic access |
 | | `matric_no`, `staff_id` | `text` nullable, unique | Student/staff identifier |
 | | `level`, `admission_session` | `text` nullable | Student cohort, e.g. `300 Level`, `2023/2024` |
@@ -45,6 +47,7 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `has_uploaded_transcript` | `boolean` default `false` | Whether any verified result has been uploaded |
 | | `transcript_file_name` | `text` nullable | Latest uploaded result filename |
 | | `result_prompt_dismissed_semester` | `text` nullable | Semester key for a student's “I don't have results yet” choice |
+| | `must_change_password` | `boolean` default `false` | Staff must set a personal password at first sign-in |
 | | `created_at` | `timestamptz` default `now()` | Creation timestamp |
 | `adviser_assignments` | `adviser_id` | `uuid` FK to `profiles.user_id` | Assigned lecturer/adviser |
 | | `department`, `admission_session`, `level` | `text` | Cohort key; the three columns form the primary key |
@@ -70,14 +73,18 @@ The final migration creates `public.get_academic_analytics()`, an aggregate-only
 
 ### Provision staff and the first adviser assignment
 
-Use **Authentication → Users → Add user** to create each staff Auth user. Copy each Auth user's UUID and run the approved profile upsert below before sharing the sign-in credentials. The Auth trigger only creates a profile when signup includes the `account_type=student` marker; staff created in the dashboard have no profile until this administrator upsert. Never let an unauthenticated browser choose a staff role:
+Open the unique Admin Portal at `https://YOUR-SITE.netlify.app/admin-portal` and sign in with a system administrator account. The same LASU-branded login is used at that URL; authorization is checked after sign-in. Only system administrators can create or reset staff accounts. The form generates an initial credential; the endpoint creates the Supabase Auth user and profile and sets `must_change_password`. The portal displays the credential once for the admin to share. Staff must change it on first sign-in. Passwords require at least 8 characters, uppercase, lowercase, a number, and a symbol.
+
+The function is `netlify/functions/admin-create-staff.mjs`; it verifies the caller's access token and database scope before using the server-only service key. Do not provision staff by inserting directly from browser code. To bootstrap the first system administrator, create an Auth user in Supabase, then insert its profile from the SQL editor with `role='admin'` and the correct department/faculty. The Auth trigger creates profiles automatically only for public student signup accounts.
+
+The following SQL can be used only for that initial trusted system administrator:
 
 ```sql
 insert into public.profiles
   (user_id, full_name, email, role, department, faculty, staff_id)
 values
-  ('AUTH_USER_UUID', 'Lecturer Name', 'lecturer@lasu.edu.ng', 'lecturer',
-   'Computer Science', 'Faculty of Computing & Information Technology', 'STAFF/001')
+  ('AUTH_USER_UUID', 'System Administrator', 'admin@lasu.edu.ng', 'admin',
+   'Computer Science', 'Faculty of Computing & Information Technology', 'ADMIN/001')
 on conflict (user_id) do update set
   full_name = excluded.full_name,
   email = excluded.email,
@@ -87,7 +94,7 @@ on conflict (user_id) do update set
   staff_id = excluded.staff_id;
 ```
 
-Repeat with `role = 'hod'` or `role = 'dean'` only for approved staff. Create a student-facing adviser assignment using the lecturer UUID and exactly matching cohort strings:
+Create a student-facing adviser assignment using the lecturer UUID and exactly matching cohort strings:
 
 ```sql
 insert into public.adviser_assignments (adviser_id, department, admission_session, level)

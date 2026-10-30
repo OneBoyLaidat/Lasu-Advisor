@@ -53,7 +53,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             Academic Overview
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            {studentProfile.department}{studentProfile.matricNo ? <> • Matric: <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{studentProfile.matricNo}</span></> : null}
+            {studentProfile.department}{studentProfile.matricNo ? <> • Matric number: <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{studentProfile.matricNo}</span></> : null}
           </p>
         </div>
 

@@ -141,7 +141,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
     if (!cleanTargetId) {
       setResetModalError(
         resetAccountType === 'student'
-          ? 'Please enter your Matriculation Number or student email address.'
+          ? 'Please enter your Matric number or student email address.'
           : 'Please enter your Staff ID or staff email address.'
       );
       return;
@@ -220,6 +220,10 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setConfirmationEmail(null);
     if (signupPassword.length < 8) {
       setErrorMessage('Choose a password with at least 8 characters.');
+      return;
+    }
+    if (!/[A-Z]/.test(signupPassword) || !/[a-z]/.test(signupPassword) || !/[0-9]/.test(signupPassword) || !/[^A-Za-z0-9\s]/.test(signupPassword)) {
+      setErrorMessage('Password must include uppercase, lowercase, a number, and a symbol.');
       return;
     }
     if (signupPassword !== confirmSignupPassword) {
@@ -845,7 +849,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Matriculation Number
+                  Matric number
                 </label>
                 <input
                   id="student-matric-input"
@@ -962,7 +966,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   autoComplete="new-password"
                   value={signupPassword}
                   onChange={(e) => setSignupPassword(e.target.value)}
-                  placeholder="At least 8 characters"
+                  placeholder="8+ characters, with upper/lowercase, number, and symbol"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
                 />
               </div>
