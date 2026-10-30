@@ -30,6 +30,7 @@ export interface RegisteredAccount {
   avatarUrl: string;
   phone?: string;
   hasUploadedTranscript?: boolean;
+  mustChangePassword?: boolean;
 }
 
 const STORAGE_KEY = 'lasu_registered_accounts_v2';
@@ -288,6 +289,7 @@ export function authenticateUser(
     avatarUrl: matched.avatarUrl,
     phone: matched.phone,
     hasUploadedTranscript: matched.hasUploadedTranscript ?? false,
+    mustChangePassword: matched.mustChangePassword ?? false,
   };
 
   return {
@@ -328,8 +330,20 @@ export function registerNewUser(data: {
     return { success: false, error: 'Please enter a valid institutional or personal email address.' };
   }
 
-  if (!cleanPass || cleanPass.length < 5) {
-    return { success: false, error: 'Password must be at least 5 characters in length.' };
+  if (!cleanPass || cleanPass.length < 8) {
+    return { success: false, error: 'Password must be at least 8 characters long.' };
+  }
+  if (!/[A-Z]/.test(cleanPass)) {
+    return { success: false, error: 'Password must contain at least one uppercase letter (A-Z).' };
+  }
+  if (!/[a-z]/.test(cleanPass)) {
+    return { success: false, error: 'Password must contain at least one lowercase letter (a-z).' };
+  }
+  if (!/[0-9]/.test(cleanPass)) {
+    return { success: false, error: 'Password must contain at least one number (0-9).' };
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(cleanPass)) {
+    return { success: false, error: 'Password must contain at least one symbol or special character (!@#$%^&*).' };
   }
 
   if (!cleanId) {
@@ -375,11 +389,11 @@ export function registerNewUser(data: {
     session: computedCohortSession,
     admissionSession: data.admissionSession || '2024/2025',
     entryMode: data.entryMode || 'utme',
-    assignedAdviserId: data.assignedAdviserId || 'adv_sarah',
-    assignedAdviserName: data.assignedAdviserName || 'Dr. Sarah Jenkins',
-    assignedAdviserEmail: data.assignedAdviserEmail || 's.jenkins@lasu.edu.ng',
-    assignedAdviserAvatar: data.assignedAdviserAvatar || ADVISER_AVATAR,
-    assignedAdviserTitle: 'Assoc. Prof, Level Adviser',
+    assignedAdviserId: data.assignedAdviserId || undefined,
+    assignedAdviserName: data.assignedAdviserName || undefined,
+    assignedAdviserEmail: data.assignedAdviserEmail || undefined,
+    assignedAdviserAvatar: data.assignedAdviserAvatar || undefined,
+    assignedAdviserTitle: data.assignedAdviserId ? 'Assoc. Prof, Level Adviser' : undefined,
     avatarUrl:
       data.role === 'student'
         ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
@@ -454,9 +468,28 @@ export function registerStaffManually(data: ManualStaffRegistrationPayload): Aut
   const cleanEmail = data.email.trim().toLowerCase();
   const cleanName = data.name.trim();
   const cleanStaffId = data.staffId.trim().toUpperCase();
-  const assignedPass = (data.password && data.password.trim().length >= 4)
-    ? data.password.trim()
-    : `LasuStaff${Math.floor(1000 + Math.random() * 9000)}!`;
+  function generateStaffPassword(): string {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghjkmnpqrstuvwxyz';
+    const digits = '23456789';
+    const symbols = '@#$!&*';
+    const all = upper + lower + digits + symbols;
+    const pass: string[] = [
+      upper[Math.floor(Math.random() * upper.length)],
+      lower[Math.floor(Math.random() * lower.length)],
+      digits[Math.floor(Math.random() * digits.length)],
+      symbols[Math.floor(Math.random() * symbols.length)],
+    ];
+    for (let i = 4; i < 10; i++) pass.push(all[Math.floor(Math.random() * all.length)]);
+    return pass.sort(() => Math.random() - 0.5).join('');
+  }
+  const providedPass = data.password ? data.password.trim() : '';
+  const passIsValid = providedPass.length >= 8
+    && /[A-Z]/.test(providedPass)
+    && /[a-z]/.test(providedPass)
+    && /[0-9]/.test(providedPass)
+    && /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(providedPass);
+  const assignedPass = passIsValid ? providedPass : generateStaffPassword();
 
   if (!cleanName || cleanName.length < 2) {
     return { success: false, error: 'Please enter a valid staff full name.' };
@@ -510,6 +543,7 @@ export function registerStaffManually(data: ManualStaffRegistrationPayload): Aut
       : data.role === 'dean'
       ? `Dean, ${data.faculty}`
       : `Level Adviser (${data.assignedLevel || 'All Levels'}), ${data.department}`,
+    mustChangePassword: true,
   };
 
   accounts.unshift(newStaffAccount);
@@ -605,8 +639,20 @@ export function resetAccountPassword(
     return { success: false, error: 'Please enter your registered email, Matric Number, or Staff ID.' };
   }
 
-  if (!cleanPass || cleanPass.length < 5) {
-    return { success: false, error: 'New password must be at least 5 characters long.' };
+  if (!cleanPass || cleanPass.length < 8) {
+    return { success: false, error: 'New password must be at least 8 characters long.' };
+  }
+  if (!/[A-Z]/.test(cleanPass)) {
+    return { success: false, error: 'Password must contain at least one uppercase letter.' };
+  }
+  if (!/[a-z]/.test(cleanPass)) {
+    return { success: false, error: 'Password must contain at least one lowercase letter.' };
+  }
+  if (!/[0-9]/.test(cleanPass)) {
+    return { success: false, error: 'Password must contain at least one number.' };
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(cleanPass)) {
+    return { success: false, error: 'Password must contain at least one special character (e.g. !@#$%^&*).' };
   }
 
   const accounts = getRegisteredAccounts();
@@ -684,4 +730,16 @@ export function deleteStaffMember(id: string): { success: boolean; error?: strin
 
   saveRegisteredAccounts(filtered);
   return { success: true };
+}
+
+/**
+ * Clears the mustChangePassword flag after a successful first-login password change.
+ */
+export function clearMustChangePassword(userId: string): void {
+  const accounts = getRegisteredAccounts();
+  const idx = accounts.findIndex((a) => a.id === userId);
+  if (idx !== -1) {
+    accounts[idx].mustChangePassword = false;
+    saveRegisteredAccounts(accounts);
+  }
 }

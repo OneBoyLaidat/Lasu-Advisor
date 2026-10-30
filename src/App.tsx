@@ -44,7 +44,7 @@ import { AuthView } from './components/AuthView';
 import { SettingsView } from './components/SettingsView';
 import { AdminPortalView } from './components/AdminPortalView';
 import { propagateAdviserAssignmentToStoredAccounts } from './lib/authService';
-import { getCurrentProfile, loadAcademicAnalytics, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, loadStudentAdvisers, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistResultPromptDismissal, persistTranscript, persistUserProfile, signOutAccount } from './lib/liveDataService';
+import { getCurrentProfile, loadAcademicAnalytics, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, loadStudentAdvisers, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistResultPromptDismissal, persistTranscript, persistUserProfile, signOutAccount, clearMustChangePassword } from './lib/liveDataService';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
 import { getCurrentSemesterKey } from './lib/academicUtils';
 
@@ -172,6 +172,13 @@ export function App() {
   const [activeConversationId, setActiveConversationId] = useState<string>('conv_michael');
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+  // Force-change-password modal state (shown after first login for newly created staff)
+  const [showForcePasswordChange, setShowForcePasswordChange] = useState<boolean>(false);
+  const [forceNewPassword, setForceNewPassword] = useState<string>('');
+  const [forceConfirmPassword, setForceConfirmPassword] = useState<string>('');
+  const [forcePasswordError, setForcePasswordError] = useState<string | null>(null);
+  const [isForceUpdating, setIsForceUpdating] = useState<boolean>(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;

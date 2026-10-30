@@ -54,8 +54,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     e.preventDefault();
     setPasswordStatus(null);
 
-    if (!newPassword || newPassword.length < 5) {
-      setPasswordStatus({ type: 'error', message: 'New password must be at least 5 characters long.' });
+    // Validate password complexity (min 8 chars, upper, lower, number, symbol)
+    if (!newPassword || newPassword.length < 8) {
+      setPasswordStatus({ type: 'error', message: 'Password must be at least 8 characters long.' });
+      return;
+    }
+    if (!/[A-Z]/.test(newPassword)) {
+      setPasswordStatus({ type: 'error', message: 'Password must include at least one uppercase letter.' });
+      return;
+    }
+    if (!/[a-z]/.test(newPassword)) {
+      setPasswordStatus({ type: 'error', message: 'Password must include at least one lowercase letter.' });
+      return;
+    }
+    if (!/[0-9]/.test(newPassword)) {
+      setPasswordStatus({ type: 'error', message: 'Password must include at least one number.' });
+      return;
+    }
+    if (!/[!@#$%^&*()_+-=[]{}|;:,.<>?]/.test(newPassword)) {
+      setPasswordStatus({ type: 'error', message: 'Password must include at least one special character (e.g. !@#$).',
       return;
     }
 
@@ -146,9 +163,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         {/* Consistent Profile Hero Card across All Sections (Calligraphy on Black Background) */}
         <div className="lg:col-span-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 flex flex-col items-center text-center shadow-xs">
           {/* Uniform Signature Calligraphy Monogram on Black Background */}
-          <div className="p-1.5 rounded-full border-2 border-emerald-500/50 dark:border-emerald-500/30 mb-3 bg-black">
-            <ProfileMonogram name={userProfile.name} sizeClassName="w-20 h-20 text-2xl" />
-          </div>
+          <ProfileMonogram name={userProfile.name} sizeClassName="w-20 h-20 text-2xl" className="mb-3" />
 
           <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{userProfile.name}</h3>
           
@@ -168,7 +183,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="mt-5 w-full pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5 text-xs text-left">
             <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Identifier:</span>
+              <span className="text-slate-500 dark:text-slate-400">{userProfile.role === 'student' ? 'Matric Number:' : 'Staff ID:'}</span>
               <span className="font-mono font-semibold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded">
                 {userProfile.matricNo || userProfile.staffId || '—'}
               </span>
@@ -181,13 +196,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </span>
             </div>
 
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Branding Style:</span>
-              <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full bg-black inline-block border border-slate-600" />
-                Calligraphy on Black
-              </span>
-            </div>
+
           </div>
         </div>
 
@@ -206,9 +215,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
                     Profile Details &amp; Contact Preferences
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Update personal display name and contact phone number.
-                  </p>
                 </div>
               </div>
 
@@ -359,11 +365,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                    Credential Security &amp; Independent Password Reset
+                    Security &amp; Password Reset
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Students and staff members can independently update their password and manage security.
-                  </p>
                 </div>
               </div>
 
@@ -402,7 +405,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <input
                       type="password"
                       required
-                      placeholder="Minimum 5 characters"
+                      placeholder="Min. 8 chars: upper, lower, number, symbol"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs"
@@ -465,11 +468,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                    Institutional Background &amp; Cohort Records
+                    Institutional Background
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Official LASU academic registration, cohort level, and advising allocations.
-                  </p>
                 </div>
               </div>
 
@@ -516,8 +516,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              {/* Advising or Oversight Relationship Card */}
-              {userProfile.role === 'student' ? (
+              {/* Advising or Oversight Relationship Card – only shown when adviser is assigned */}
+              {userProfile.role === 'student' && userProfile.assignedAdviserId ? (
                 <div className="p-4 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <ProfileMonogram name={userProfile.assignedAdviserName || 'Adviser'} sizeClassName="w-10 h-10 text-xs" />
@@ -526,10 +526,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         Assigned Level Adviser (1AD)
                       </span>
                       <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                        {userProfile.assignedAdviserName || 'Dr. Sarah Jenkins'}
+                        {userProfile.assignedAdviserName}
                       </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                        {userProfile.assignedAdviserEmail || 's.jenkins@lasu.edu.ng'}
+                        {userProfile.assignedAdviserEmail}
                       </p>
                     </div>
                   </div>

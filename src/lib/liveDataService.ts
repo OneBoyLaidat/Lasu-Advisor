@@ -558,4 +558,6 @@ export async function registerStaffAccount(
   return localResult;
 }
 
-export { getStaffDirectory, updateStaffMember, deleteStaffMember, resetAccountPassword };
+export { getStaffDirectory, updateStaffMember, deleteStaffMember, resetAccountPassword, clearMustChangePassword };
+
+export { clearMustChangePassword } from './authService';

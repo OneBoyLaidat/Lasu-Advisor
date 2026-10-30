@@ -335,8 +335,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
 
         {/* Sidebar Widgets (Spans 1 col) */}
         <div className="lg:col-span-1 space-y-6 h-full">
-          {/* Level Adviser Widget */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col relative shadow-xs">
+          {/* Level Adviser Widget – Only shown when assigned */}
+          {assignedAdviser && (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col relative shadow-xs">
             <div className="flex items-center gap-2 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
               <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-[18px]">badge</span>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 m-0">Level Adviser</h3>
@@ -375,6 +376,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               </button>
             </div>
           </div>
+          )} 
         </div>
       </div>
       {/* Result and transcript compliance stays at the bottom of the profile page. */}

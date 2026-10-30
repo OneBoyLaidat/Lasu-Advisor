@@ -29,7 +29,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [formFaculty, setFormFaculty] = useState<string>(userProfile.faculty || 'Faculty of Computing & Information Technology');
   const [formLevel, setFormLevel] = useState<string>('100 Level (1AD)');
   const [formPhone, setFormPhone] = useState<string>('');
-  const [formPassword, setFormPassword] = useState<string>('LasuStaff2026!');
+  const [formPassword, setFormPassword] = useState<string>(() => {
+    const up='ABCDEFGHJKLMNPQRSTUVWXYZ',lo='abcdefghjkmnpqrstuvwxyz',di='23456789',sy='@#$!&*';
+    const all=up+lo+di+sy;
+    const p=[up[Math.floor(Math.random()*up.length)],lo[Math.floor(Math.random()*lo.length)],di[Math.floor(Math.random()*di.length)],sy[Math.floor(Math.random()*sy.length)]];
+    for(let i=4;i<10;i++)p.push(all[Math.floor(Math.random()*all.length)]);
+    return p.sort(()=>Math.random()-0.5).join('');
+  });
   
   // Form submission feedback
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -126,7 +132,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       setFormEmail('');
       setFormStaffId('');
       setFormPhone('');
-      setFormPassword('LasuStaff2026!');
+      // regenerate secure password for next registration
+      const up2='ABCDEFGHJKLMNPQRSTUVWXYZ',lo2='abcdefghjkmnpqrstuvwxyz',di2='23456789',sy2='@#$!&*';
+      const all2=up2+lo2+di2+sy2;
+      const p2=[up2[Math.floor(Math.random()*up2.length)],lo2[Math.floor(Math.random()*lo2.length)],di2[Math.floor(Math.random()*di2.length)],sy2[Math.floor(Math.random()*sy2.length)]];
+      for(let i=4;i<10;i++)p2.push(all2[Math.floor(Math.random()*all2.length)]);
+      setFormPassword(p2.sort(()=>Math.random()-0.5).join(''));
     } catch (err) {
       setModalError(err instanceof Error ? err.message : 'Error registering staff member.');
     } finally {
@@ -136,8 +147,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
   const handleResetStaffPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!resetTargetStaff || !newStaffPassword || newStaffPassword.length < 5) {
-      setResetFeedback('Password must be at least 5 characters long.');
+    if (!resetTargetStaff || !newStaffPassword || newStaffPassword.length < 8) {
+      setResetFeedback('Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.');
       return;
     }
 
@@ -502,8 +513,16 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             {createdCredentials ? (
               /* Success View showing newly created staff credentials */
               <div className="space-y-4 text-center py-2">
-                <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 mx-auto flex items-center justify-center mb-2">
-                  <span className="material-symbols-outlined text-[30px]">check_circle</span>
+                <div className="flex flex-col items-center gap-2 mb-2">
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 mx-auto flex items-center justify-center">
+                    <span className="material-symbols-outlined text-[30px]">check_circle</span>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900">
+                    <span className="material-symbols-outlined text-[15px]">
+                      {createdCredentials.role === 'Head of Department' ? 'corporate_fare' : createdCredentials.role === 'Dean of Faculty' ? 'verified' : 'school'}
+                    </span>
+                    {createdCredentials.role}
+                  </span>
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100">
                   Staff Account Successfully Registered!
@@ -705,7 +724,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       </label>
                       <button
                         type="button"
-                        onClick={() => setFormPassword(`Lasu@Staff${Math.floor(1000 + Math.random() * 9000)}!`)}
+                        onClick={() => {
+                          const up='ABCDEFGHJKLMNPQRSTUVWXYZ',lo='abcdefghjkmnpqrstuvwxyz',di='23456789',sy='@#$!&*';
+                          const all=up+lo+di+sy;
+                          const p=[up[Math.floor(Math.random()*up.length)],lo[Math.floor(Math.random()*lo.length)],di[Math.floor(Math.random()*di.length)],sy[Math.floor(Math.random()*sy.length)]];
+                          for(let i=4;i<10;i++)p.push(all[Math.floor(Math.random()*all.length)]);
+                          setFormPassword(p.sort(()=>Math.random()-0.5).join(''));
+                        }}
                         className="text-[11px] text-emerald-600 hover:underline cursor-pointer"
                       >
                         Generate Random
@@ -719,7 +744,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                     />
                     <p className="text-[10px] text-slate-400 mt-1">
-                      The staff member will use this initial password along with their Staff ID or Email to sign in.
+                      The staff member will use this initial password to sign in and will be prompted to update it on their first login. Must be minimum 8 characters with upper, lower, numbers and symbols.
                     </p>
                   </div>
                 </div>
@@ -800,7 +825,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 <input
                   type="text"
                   required
-                  placeholder="Enter new password (min. 5 characters)"
+                  placeholder="Min. 8 chars: Aa, 0-9, and !@#$..."
                   value={newStaffPassword}
                   onChange={(e) => setNewStaffPassword(e.target.value)}
                   className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
