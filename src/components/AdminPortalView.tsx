@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, LASU_DEPARTMENTS } from '../types';
-import { loadStaffDirectory, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, StaffProfileUpdate } from '../lib/liveDataService';
+import { UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload, LASU_DEPARTMENTS } from '../types';
+import { loadStaffDirectory, loadAdministrators, registerAdministratorAccount, updateAdministratorProfile, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, StaffProfileUpdate, AdministratorProfileUpdate } from '../lib/liveDataService';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface AdminPortalViewProps {
@@ -31,12 +31,25 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   onNavigateToTab,
 }) => {
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [administratorList, setAdministratorList] = useState<AdministratorProfile[]>([]);
   const [departmentHods, setDepartmentHods] = useState<Record<string, StaffMember>>({});
   const [hodSelections, setHodSelections] = useState<Record<string, string>>({});
   const [savingDepartment, setSavingDepartment] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<StaffMember | null>(null);
   const [editForm, setEditForm] = useState<StaffProfileUpdate | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isAdminRegistrationOpen, setIsAdminRegistrationOpen] = useState(false);
+  const [adminForm, setAdminForm] = useState<AdministratorRegistrationPayload>(() => ({
+    name: '', email: '', staffId: '', department: LASU_DEPARTMENTS[0],
+    faculty: userProfile.faculty || 'Faculty of Computing & Information Technology', phone: '',
+    password: generateStaffPassword(),
+  }));
+  const [adminFormError, setAdminFormError] = useState<string | null>(null);
+  const [isCreatingAdmin, setIsCreatingAdmin] = useState(false);
+  const [newAdminCredentials, setNewAdminCredentials] = useState<AdministratorRegistrationPayload | null>(null);
+  const [editAdminTarget, setEditAdminTarget] = useState<AdministratorProfile | null>(null);
+  const [editAdminForm, setEditAdminForm] = useState<AdministratorProfileUpdate | null>(null);
+  const [isSavingAdminProfile, setIsSavingAdminProfile] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('All');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>('All');
@@ -77,9 +90,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   // Load staff data on mount
   const refreshStaffList = async () => {
     try {
-      const [staff, hods] = await Promise.all([loadStaffDirectory(), loadDepartmentHodAssignments()]);
+      const [staff, hods, administrators] = await Promise.all([loadStaffDirectory(), loadDepartmentHodAssignments(), loadAdministrators()]);
       setStaffList(staff);
       setDepartmentHods(hods);
+      setAdministratorList(administrators);
       setHodSelections(LASU_DEPARTMENTS.reduce<Record<string, string>>((selection, department) => {
         selection[department] = hods[department]?.id || '';
         return selection;
@@ -252,6 +266,53 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     } finally { setIsSavingProfile(false); }
   };
 
+  const handleRegisterAdministrator = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setAdminFormError(null);
+    setIsCreatingAdmin(true);
+    try {
+      const payload = { ...adminForm, name: adminForm.name.trim(), email: adminForm.email.trim().toLowerCase(), staffId: adminForm.staffId.trim().toUpperCase() };
+      const result = await registerAdministratorAccount(payload);
+      if (!result.success) {
+        setAdminFormError(result.error || 'Could not register the administrator.');
+        return;
+      }
+      await refreshStaffList();
+      setNewAdminCredentials(payload);
+      setAdminForm((current) => ({ ...current, name: '', email: '', staffId: '', phone: '', password: generateStaffPassword() }));
+    } catch (error) {
+      setAdminFormError(error instanceof Error ? error.message : 'Could not register the administrator.');
+    } finally { setIsCreatingAdmin(false); }
+  };
+
+  const openAdministratorEditor = (administrator: AdministratorProfile) => {
+    setEditAdminTarget(administrator);
+    setEditAdminForm({
+      name: administrator.name, staffId: administrator.staffId,
+      department: administrator.department, faculty: administrator.faculty, phone: administrator.phone || '',
+    });
+  };
+
+  const handleSaveAdministratorProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editAdminTarget || !editAdminForm) return;
+    setIsSavingAdminProfile(true);
+    try {
+      const result = await updateAdministratorProfile(editAdminTarget.id, editAdminForm);
+      if (!result.success) {
+        setPortalError(result.error || 'Could not update administrator profile.');
+        return;
+      }
+      setEditAdminTarget(null);
+      setEditAdminForm(null);
+      setPortalError(null);
+      setSuccessBanner(`Profile updated for ${editAdminForm.name}.`);
+      await refreshStaffList();
+    } catch (error) {
+      setPortalError(error instanceof Error ? error.message : 'Could not update administrator profile.');
+    } finally { setIsSavingAdminProfile(false); }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header & Management Bar */}
@@ -364,6 +425,38 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Executive Oversight</p>
         </div>
       </div>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-4 flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+          <div>
+            <h2 className="flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-100">
+              <span className="material-symbols-outlined text-emerald-600">shield_person</span>System administrators
+            </h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{administratorList.length} administrator account{administratorList.length === 1 ? '' : 's'}</p>
+          </div>
+          <button type="button" onClick={() => { setNewAdminCredentials(null); setAdminFormError(null); setIsAdminRegistrationOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800">
+            <span className="material-symbols-outlined text-[17px]">person_add</span>Register administrator
+          </button>
+        </div>
+        {administratorList.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[620px] text-left text-xs">
+              <thead><tr className="border-b border-slate-100 text-[10px] uppercase tracking-wide text-slate-500 dark:border-slate-800"><th className="px-3 py-2.5">Administrator</th><th className="px-3 py-2.5">Staff ID</th><th className="px-3 py-2.5">Department</th><th className="px-3 py-2.5">Faculty</th><th className="px-3 py-2.5 text-right">Profile</th></tr></thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {administratorList.map((administrator) => (
+                  <tr key={administrator.id}>
+                    <td className="px-3 py-3"><div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-slate-900 text-white dark:bg-emerald-800"><span className="material-symbols-outlined text-[18px]">shield_person</span></span><div><p className="font-semibold text-slate-900 dark:text-slate-100">{administrator.name}</p><p className="mt-0.5 text-[11px] text-slate-500">{administrator.email}</p></div></div></td>
+                    <td className="px-3 py-3 font-mono">{administrator.staffId}</td>
+                    <td className="px-3 py-3">{administrator.department}</td>
+                    <td className="px-3 py-3">{administrator.faculty}</td>
+                    <td className="px-3 py-3 text-right"><button type="button" onClick={() => openAdministratorEditor(administrator)} className="rounded-lg p-2 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40" title={`Edit ${administrator.name}`}><span className="material-symbols-outlined text-[17px]">edit</span></button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-xs text-slate-500 dark:bg-slate-800/50">No additional administrator accounts have been registered.</p>}
+      </section>
 
       {/* Five department HOD assignments */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs">
@@ -549,6 +642,67 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           </table>
         </div>
       </div>
+
+      {isAdminRegistrationOpen && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="mb-5 flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Register administrator</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Creates an Auth login and admin profile.</p></div>
+              <button type="button" aria-label="Close administrator registration" onClick={() => { setIsAdminRegistrationOpen(false); setNewAdminCredentials(null); }} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><span className="material-symbols-outlined">close</span></button>
+            </div>
+            {newAdminCredentials ? (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/30">
+                  <p className="font-semibold text-emerald-900 dark:text-emerald-200">Administrator registered</p>
+                  <p className="mt-1 text-xs text-emerald-800 dark:text-emerald-300">Share this temporary password securely. They must change it at first sign-in.</p>
+                </div>
+                <dl className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs dark:bg-slate-800/60">
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500">Name</dt><dd className="font-semibold">{newAdminCredentials.name}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500">Email</dt><dd className="font-mono">{newAdminCredentials.email}</dd></div>
+                  <div className="flex justify-between gap-3"><dt className="text-slate-500">Staff ID</dt><dd className="font-mono">{newAdminCredentials.staffId}</dd></div>
+                  <div className="flex justify-between gap-3 border-t border-slate-200 pt-2 dark:border-slate-700"><dt className="font-semibold text-slate-500">Temporary password</dt><dd className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{newAdminCredentials.password}</dd></div>
+                </dl>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => { void navigator.clipboard.writeText(`LASU Advisor Administrator\nName: ${newAdminCredentials.name}\nEmail: ${newAdminCredentials.email}\nStaff ID: ${newAdminCredentials.staffId}\nTemporary password: ${newAdminCredentials.password}\nPortal: ${window.location.origin}/admin-portal`); }} className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-semibold dark:border-slate-700">Copy credentials</button>
+                  <button type="button" onClick={() => { setNewAdminCredentials(null); setIsAdminRegistrationOpen(false); }} className="flex-1 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white">Done</button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleRegisterAdministrator} className="space-y-4">
+                {adminFormError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">{adminFormError}</p>}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Full name<input required minLength={2} value={adminForm.name} onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Email<input required type="email" value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Staff ID<input required value={adminForm.staffId} onChange={(e) => setAdminForm({ ...adminForm, staffId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Department<select value={adminForm.department} onChange={(e) => setAdminForm({ ...adminForm, department: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">{LASU_DEPARTMENTS.map((department) => <option key={department}>{department}</option>)}</select></label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 sm:col-span-2">Faculty<input required value={adminForm.faculty} onChange={(e) => setAdminForm({ ...adminForm, faculty: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Phone<input value={adminForm.phone || ''} onChange={(e) => setAdminForm({ ...adminForm, phone: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Initial password<div className="mt-1 flex gap-2"><input required type="password" autoComplete="new-password" value={adminForm.password} onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono dark:border-slate-700 dark:bg-slate-800" /><button type="button" title="Generate password" onClick={() => setAdminForm({ ...adminForm, password: generateStaffPassword() })} className="rounded-lg border border-slate-200 px-2 text-slate-500 dark:border-slate-700"><span className="material-symbols-outlined text-[18px]">autorenew</span></button></div></label>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">At least 8 characters with uppercase, lowercase, a number, and a symbol.</p>
+                <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800"><button type="button" onClick={() => setIsAdminRegistrationOpen(false)} className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={isCreatingAdmin} className="rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-60">{isCreatingAdmin ? 'Registering…' : 'Create administrator'}</button></div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {editAdminTarget && editAdminForm && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/65 p-4 backdrop-blur-sm">
+          <form onSubmit={handleSaveAdministratorProfile} className="w-full max-w-xl space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="border-b border-slate-100 pb-3 dark:border-slate-800"><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Edit administrator profile</h2><p className="mt-1 text-xs text-slate-500">{editAdminTarget.email}</p></div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold">Full name<input required value={editAdminForm.name} onChange={(e) => setEditAdminForm({ ...editAdminForm, name: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+              <label className="text-xs font-semibold">Staff ID<input required value={editAdminForm.staffId} onChange={(e) => setEditAdminForm({ ...editAdminForm, staffId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+              <label className="text-xs font-semibold">Department<select value={editAdminForm.department} onChange={(e) => setEditAdminForm({ ...editAdminForm, department: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">{LASU_DEPARTMENTS.map((department) => <option key={department}>{department}</option>)}</select></label>
+              <label className="text-xs font-semibold">Faculty<input required value={editAdminForm.faculty} onChange={(e) => setEditAdminForm({ ...editAdminForm, faculty: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+              <label className="text-xs font-semibold sm:col-span-2">Phone<input value={editAdminForm.phone || ''} onChange={(e) => setEditAdminForm({ ...editAdminForm, phone: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
+            </div>
+            {portalError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700">{portalError}</p>}
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800"><button type="button" onClick={() => { setEditAdminTarget(null); setEditAdminForm(null); }} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold dark:border-slate-700">Cancel</button><button type="submit" disabled={isSavingAdminProfile} className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-60">{isSavingAdminProfile ? 'Saving…' : 'Save profile'}</button></div>
+          </form>
+        </div>
+      )}
 
       {editTarget && editForm && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/65 p-4 backdrop-blur-sm">

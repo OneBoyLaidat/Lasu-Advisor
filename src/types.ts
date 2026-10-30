@@ -262,6 +262,20 @@ export interface StaffMember {
   dateRegistered: string;
 }
 
+export interface AdministratorProfile {
+  id: string;
+  name: string;
+  email: string;
+  staffId: string;
+  department: string;
+  faculty: string;
+  phone?: string;
+}
+
+export interface AdministratorRegistrationPayload extends Omit<AdministratorProfile, 'id'> {
+  password: string;
+}
+
 export interface ManualStaffRegistrationPayload {
   name: string;
   email: string;

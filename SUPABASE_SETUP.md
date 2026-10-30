@@ -25,13 +25,13 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the frontend host's buil
 
 `GEMINI_API_KEY` is server-only and is used by `/api/ocr/transcript` in `server.ts` locally and `netlify/functions/ocr-transcript.mjs` on Netlify when a PDF has no extractable text. Never prefix it with `VITE_`. Scanned PDFs sent through the Netlify function must be 4 MB or smaller because the function request includes base64 expansion. It is not needed for ordinary text-based PDFs. `APP_URL` is for deployment configuration and is not used by the browser Supabase client.
 
-For Netlify staff provisioning, also set these **function environment variables** in Site configuration → Environment variables: `SUPABASE_URL` (the Project URL), `SUPABASE_ANON_KEY` (the anon/publishable key), and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role/secret key). These are read only by `netlify/functions/admin-create-staff.mjs`. Keep the service role key server-side; never add a `VITE_` prefix. Deploy the function after setting them.
+For Netlify staff provisioning, also set these **function environment variables** in Site configuration → Environment variables: `SUPABASE_URL` (the Project URL), `SUPABASE_ANON_KEY` (the anon/publishable key), and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role/secret key). These are read only by the server-side staff/admin provisioning and password functions under `netlify/functions/`. Keep the service role key server-side; never add a `VITE_` prefix. Deploy the functions after setting them.
 
 Restart the dev server after editing `.env`. Local development falls back to demo authentication/data when either Supabase frontend variable is missing. Production builds fail closed with a setup message instead of silently creating demo accounts. An empty `.env.example` does not connect a project.
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, `202610300003_admin_staff_management.sql`, `202610300004_staff_credentials.sql`, then `202610300005_admin_portal_management.sql`. The last migration adds the five department HOD slots, profile-edit permissions, and the transactional HOD reassignment function.
+Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, `202610300003_admin_staff_management.sql`, `202610300004_staff_credentials.sql`, `202610300005_admin_portal_management.sql`, then `202610300006_admin_account_provisioning.sql`. The migrations add the five department HOD slots, profile editing, and server-only administrator account provisioning permissions.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|
@@ -79,7 +79,7 @@ The final migration creates `public.get_academic_analytics()`, an aggregate-only
 
 Open the unique Admin Portal at `https://YOUR-SITE.netlify.app/admin-portal` and sign in with a system administrator account. The same LASU-branded login is used at that URL; authorization is checked after sign-in. Only system administrators can create or reset staff accounts. The form generates an initial credential; the endpoint creates the Supabase Auth user and profile and sets `must_change_password`. The portal displays the credential once for the admin to share. Staff must change it on first sign-in. Passwords require at least 8 characters, uppercase, lowercase, a number, and a symbol.
 
-The function is `netlify/functions/admin-create-staff.mjs`; it verifies the caller's access token and database scope before using the server-only service key. Do not provision staff by inserting directly from browser code. To bootstrap the first system administrator, create an Auth user in Supabase, then insert its profile from the SQL editor with `role='admin'` and the correct department/faculty. The Auth trigger creates profiles automatically only for public student signup accounts.
+The function is `netlify/functions/admin-create-staff.mjs`; it verifies the caller's access token and database scope before using the server-only service key. Administrator provisioning uses `netlify/functions/admin-register-administrator.mjs`, which checks the signed-in caller's `profiles.role='admin'` and keeps the service-role key server-side. Do not place this key in frontend variables or provision admin profiles from browser code. To bootstrap the first system administrator, create an Auth user in Supabase, then insert its profile from the SQL editor with `role='admin'` and the correct department/faculty. The Auth trigger creates profiles automatically only for public student signup accounts.
 
 The following SQL can be used only for that initial trusted system administrator:
 

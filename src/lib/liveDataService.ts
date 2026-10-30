@@ -1,5 +1,5 @@
 import { User } from '@supabase/supabase-js';
-import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConversation, UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload } from '../types';
+import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConversation, UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload } from '../types';
 import { AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember, clearMustChangePassword } from './authService';
 import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
 import { getCurrentSemesterKey } from './academicUtils';
@@ -577,6 +577,53 @@ export async function loadStaffDirectory(): Promise<StaffMember[]> {
     phone: row.phone || undefined, avatarUrl: '', status: 'Active',
     dateRegistered: row.created_at ? new Date(row.created_at).toLocaleDateString() : '',
   }));
+}
+
+export async function loadAdministrators(): Promise<AdministratorProfile[]> {
+  if (!isSupabaseConfigured) return [];
+  const client = getSupabaseClient();
+  if (!client) return [];
+  const { data, error } = await client.from('profiles')
+    .select('user_id,full_name,email,staff_id,department,faculty,phone')
+    .eq('role', 'admin').order('full_name');
+  if (error) throw error;
+  return (data || []).map((row) => ({
+    id: row.user_id, name: row.full_name, email: row.email, staffId: row.staff_id || '',
+    department: row.department, faculty: row.faculty, phone: row.phone || undefined,
+  }));
+}
+
+export async function registerAdministratorAccount(payload: AdministratorRegistrationPayload): Promise<{ success: boolean; error?: string; generatedPassword?: string }> {
+  if (!isSupabaseConfigured) return { success: false, error: 'Administrator registration requires the live Supabase service.' };
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+  const { data, error } = await client.auth.getSession();
+  if (error || !data.session?.access_token) return { success: false, error: 'Sign in as a system administrator before registering another administrator.' };
+  try {
+    const response = await fetch('/.netlify/functions/admin-register-administrator', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    return response.ok && result.success
+      ? { success: true, generatedPassword: payload.password }
+      : { success: false, error: result.error || 'Administrator registration failed.' };
+  } catch (error) {
+    return { success: false, error: describeSupabaseConnectionError(error) };
+  }
+}
+
+export type AdministratorProfileUpdate = Omit<AdministratorProfile, 'id' | 'email'>;
+
+export async function updateAdministratorProfile(id: string, updates: AdministratorProfileUpdate): Promise<{ success: boolean; error?: string }> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return { success: false, error: 'Administrator profiles require the live Supabase service.' };
+  const { error } = await client.from('profiles').update({
+    full_name: updates.name.trim(), staff_id: updates.staffId.trim().toUpperCase(),
+    department: updates.department, faculty: updates.faculty, phone: updates.phone?.trim() || null,
+  }).eq('user_id', id).eq('role', 'admin');
+  return error ? { success: false, error: error.message } : { success: true };
 }
 
 export type StaffProfileUpdate = Pick<ManualStaffRegistrationPayload, 'name' | 'staffId' | 'role' | 'department' | 'faculty'>
