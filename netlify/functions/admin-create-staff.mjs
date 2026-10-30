@@ -47,18 +47,26 @@ export async function handler(event) {
 
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email, password, email_confirm: true,
-    user_metadata: { account_type: 'staff', full_name: name, role, staff_id: staffId, department, faculty, level: input.level || null, phone: input.phone || null, must_change_password: true },
+    user_metadata: { account_type: 'student', full_name: name, role: 'student', department, faculty },
   });
   if (createError || !created.user) return json(400, { error: createError?.message || 'Could not create staff login.' });
 
   const profile = {
-    user_id: created.user.id, full_name: name, email, role, department, faculty, staff_id: staffId,
-    level: input.level || null, phone: input.phone || null, must_change_password: true,
+    user_id: created.user.id, full_name: name, email, role, department, faculty,
   };
-  const { error: profileError } = await adminClient.from('profiles').insert(profile);
+  const { error: profileError } = await adminClient.from('profiles').update(profile).eq('user_id', created.user.id);
   if (profileError) {
     await adminClient.auth.admin.deleteUser(created.user.id);
     return json(400, { error: profileError.message });
   }
-  return json(201, { success: true, staff: { id: created.user.id, ...profile, password: undefined } });
+  const { error: detailsError } = await adminClient.from('staff_profiles').insert({
+    user_id: created.user.id, staff_id: staffId, level: input.level || null,
+    admission_session: input.assignedSession || null, phone: input.phone || null, must_change_password: true,
+  });
+  if (detailsError) {
+    await adminClient.auth.admin.deleteUser(created.user.id);
+    return json(400, { error: detailsError.message });
+  }
+  await adminClient.from('students').delete().eq('user_id', created.user.id);
+  return json(201, { success: true, staff: { id: created.user.id, ...profile, staff_id: staffId, level: input.level || null, phone: input.phone || null } });
 }

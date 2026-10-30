@@ -187,13 +187,14 @@ export function App() {
   }, []);
 
   const openAdminPortal = () => {
+    if (!['admin', 'dean', 'hod'].includes(userRole)) return;
     if (window.location.pathname !== '/admin-portal') window.history.pushState({}, '', '/admin-portal');
     setCurrentTab('admin');
   };
 
   const navigateToTab = (tab: string) => {
     if (tab === 'admin') {
-      if (userRole === 'admin') openAdminPortal();
+      if (['admin', 'dean', 'hod'].includes(userRole)) openAdminPortal();
       return;
     }
     if (window.location.pathname === '/admin-portal') window.history.pushState({}, '', '/');
@@ -237,7 +238,7 @@ export function App() {
         setUserRole(profile.role);
         if (profile.mustChangePassword) setShowForcePasswordChange(true);
         setActiveStudentAdviserEmail('');
-        const adminPath = window.location.pathname === '/admin-portal' && profile.role === 'admin';
+        const adminPath = window.location.pathname === '/admin-portal' && ['admin', 'dean', 'hod'].includes(profile.role);
         if (window.location.pathname === '/admin-portal' && !adminPath) window.history.replaceState({}, '', '/');
         setCurrentTab(adminPath ? 'admin' : profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
         setCourseResults([]);
@@ -430,10 +431,10 @@ export function App() {
       return ['dashboard', 'messages', 'advising', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'hod') {
-      return ['messages', 'departmental', 'analytics', 'settings'].includes(tab);
+      return ['messages', 'departmental', 'analytics', 'settings', 'admin'].includes(tab);
     }
     if (role === 'dean') {
-      return ['messages', 'executive', 'analytics', 'settings'].includes(tab);
+      return ['messages', 'executive', 'analytics', 'settings', 'admin'].includes(tab);
     }
     return role === 'admin' && ['dashboard', 'messages', 'departmental', 'executive', 'analytics', 'settings', 'admin'].includes(tab);
   };
@@ -994,7 +995,7 @@ export function App() {
           setActiveStaffContactEmail('');
           setActiveStudentAdviserEmail('');
           setHasNudgeNotice(false);
-          if (window.location.pathname === '/admin-portal' && profile.role === 'admin') {
+          if (window.location.pathname === '/admin-portal' && ['admin', 'dean', 'hod'].includes(profile.role)) {
             setCurrentTab('admin');
           } else if (window.location.pathname === '/admin-portal') {
             window.history.replaceState({}, '', '/');
@@ -1307,7 +1308,7 @@ export function App() {
             {/* Tab: Settings */}
             
             {/* Tab: system administrator portal */}
-            {currentTab === 'admin' && userRole === 'admin' && (
+            {currentTab === 'admin' && ['admin', 'hod', 'dean'].includes(userRole) && (
               <AdminPortalView
                 userProfile={userProfile}
                 userRole={userRole}

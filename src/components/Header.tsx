@@ -94,7 +94,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         
         {/* System administrator entry to the staff portal */}
-        {userRole === 'admin' && onOpenAdminPortal && (
+        {['admin', 'dean', 'hod'].includes(userRole) && onOpenAdminPortal && (
           <button
             type="button"
             id="header-admin-portal-btn"
@@ -263,7 +263,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
 
                 <div className="py-2 flex flex-col gap-1 text-xs text-slate-700 dark:text-slate-300">
-                  {userRole === 'admin' && onOpenAdminPortal && (
+                  {['admin', 'dean', 'hod'].includes(userRole) && onOpenAdminPortal && (
                     <button
                       onClick={() => {
                         onOpenAdminPortal();

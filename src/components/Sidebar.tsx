@@ -57,7 +57,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'admin',
       label: 'Admin Portal',
       icon: 'shield_person',
-      roles: ['admin'],
+      roles: ['admin', 'dean', 'hod'],
     },
 
     {

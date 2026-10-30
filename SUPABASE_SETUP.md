@@ -25,13 +25,13 @@ Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the frontend host's buil
 
 `GEMINI_API_KEY` is server-only and is used by `/api/ocr/transcript` in `server.ts` locally and `netlify/functions/ocr-transcript.mjs` on Netlify when a PDF has no extractable text. Never prefix it with `VITE_`. Scanned PDFs sent through the Netlify function must be 4 MB or smaller because the function request includes base64 expansion. It is not needed for ordinary text-based PDFs. `APP_URL` is for deployment configuration and is not used by the browser Supabase client.
 
-For Netlify staff provisioning, also set these **function environment variables** in Site configuration → Environment variables: `SUPABASE_URL` (the Project URL), `SUPABASE_ANON_KEY` (the anon/publishable key), and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role/secret key). These are read only by the server-side staff/admin provisioning and password functions under `netlify/functions/`. Keep the service role key server-side; never add a `VITE_` prefix. Deploy the functions after setting them.
+For Netlify staff provisioning, also set these **function environment variables** in Site configuration → Environment variables: `SUPABASE_URL` (the Project URL), `SUPABASE_ANON_KEY` (the anon/publishable key), and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role/secret key). These are read only by the server-side staff/admin provisioning and password functions under `netlify/functions/`. Keep the service role key server-side; never add a `VITE_` prefix. Netlify's live environment is outside this repository, so verify this key is configured in the Netlify UI. Functions fail with a configuration error if it is missing; a successful admin operation confirms it can access Supabase Auth and Postgres. Deploy after setting the variables.
 
 Restart the dev server after editing `.env`. Local development falls back to demo authentication/data when either Supabase frontend variable is missing. Production builds fail closed with a setup message instead of silently creating demo accounts. An empty `.env.example` does not connect a project.
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, `202610300003_admin_staff_management.sql`, `202610300004_staff_credentials.sql`, `202610300005_admin_portal_management.sql`, then `202610300006_admin_account_provisioning.sql`. The migrations add the five department HOD slots, profile editing, and server-only administrator account provisioning permissions.
+Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, `202610300003_admin_staff_management.sql`, `202610300004_staff_credentials.sql`, `202610300005_admin_portal_management.sql`, `202610300006_admin_account_provisioning.sql`, `202610300007_split_student_staff_profiles.sql`, then `202610300008_super_admin_bootstrap.sql`. Migration 007 backfills student/staff records before dropping role-specific columns from `profiles`; shared identity and access role stay in `profiles`.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|
@@ -40,15 +40,19 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `email` | `text` unique | Account email |
 | | `role` | `text` (`student`, `lecturer`, `hod`, `dean`, `admin`) | Authorization role |
 | | `department`, `faculty` | `text` | Scope for academic access |
-| | `matric_no`, `staff_id` | `text` nullable, unique | Student/staff identifier |
-| | `level`, `admission_session` | `text` nullable | Student cohort, e.g. `300 Level`, `2023/2024` |
-| | `avatar_url` | `text` nullable | Profile image URL |
-| | `phone` | `text` nullable | Profile phone |
-| | `has_uploaded_transcript` | `boolean` default `false` | Whether any verified result has been uploaded |
-| | `transcript_file_name` | `text` nullable | Latest uploaded result filename |
-| | `result_prompt_dismissed_semester` | `text` nullable | Semester key for a student's “I don't have results yet” choice |
-| | `must_change_password` | `boolean` default `false` | Staff must set a personal password at first sign-in |
 | | `created_at` | `timestamptz` default `now()` | Creation timestamp |
+| `students` | `user_id` | `uuid` PK, FK to `profiles.user_id` | Student identity link |
+| | `matric_no` | `text` unique | Student matriculation number |
+| | `level`, `admission_session` | `text` nullable | Student cohort, e.g. `300 Level`, `2023/2024` |
+| | `avatar_url`, `phone` | `text` nullable | Student profile details |
+| | `has_uploaded_transcript` | `boolean` default `false` | Whether a result has been uploaded |
+| | `transcript_file_name` | `text` nullable | Latest uploaded result filename |
+| | `result_prompt_dismissed_semester` | `text` nullable | Student's “I don't have results yet” semester key |
+| `staff_profiles` | `user_id` | `uuid` PK, FK to `profiles.user_id` | Staff identity link |
+| | `staff_id` | `text` unique | Staff identifier |
+| | `level`, `admission_session` | `text` nullable | Adviser cohort, if applicable |
+| | `avatar_url`, `phone` | `text` nullable | Staff profile details |
+| | `must_change_password` | `boolean` default `false` | Staff must set a personal password at first sign-in |
 | `adviser_assignments` | `adviser_id` | `uuid` FK to `profiles.user_id` | Assigned lecturer/adviser |
 | | `department`, `admission_session`, `level` | `text` | Cohort key; the three columns form the primary key |
 | `student_results` | `id` | `bigint` identity PK | Result row identifier |
@@ -79,24 +83,17 @@ The final migration creates `public.get_academic_analytics()`, an aggregate-only
 
 Open the unique Admin Portal at `https://YOUR-SITE.netlify.app/admin-portal` and sign in with a system administrator account. The same LASU-branded login is used at that URL; authorization is checked after sign-in. Only system administrators can create or reset staff accounts. The form generates an initial credential; the endpoint creates the Supabase Auth user and profile and sets `must_change_password`. The portal displays the credential once for the admin to share. Staff must change it on first sign-in. Passwords require at least 8 characters, uppercase, lowercase, a number, and a symbol.
 
-The function is `netlify/functions/admin-create-staff.mjs`; it verifies the caller's access token and database scope before using the server-only service key. Administrator provisioning uses `netlify/functions/admin-register-administrator.mjs`, which checks the signed-in caller's `profiles.role='admin'` and keeps the service-role key server-side. Do not place this key in frontend variables or provision admin profiles from browser code. To bootstrap the first system administrator, create an Auth user in Supabase, then insert its profile from the SQL editor with `role='admin'` and the correct department/faculty. The Auth trigger creates profiles automatically only for public student signup accounts.
+The function is `netlify/functions/admin-create-staff.mjs`; it verifies the caller's access token and database scope before using the server-only service key. Administrator provisioning uses `netlify/functions/admin-register-administrator.mjs`, which checks that the signed-in caller has `profiles.role='admin'`. The one-time bootstrap function is `netlify/functions/bootstrap-super-admin.mjs`; it requires the service key, an allowlisted email and an atomic one-time database claim. It is not an authentication bypass and cannot be called from the frontend.
 
-The following SQL can be used only for that initial trusted system administrator:
+To bootstrap the first super-admin:
 
-```sql
-insert into public.profiles
-  (user_id, full_name, email, role, department, faculty, staff_id)
-values
-  ('AUTH_USER_UUID', 'System Administrator', 'admin@lasu.edu.ng', 'admin',
-   'Computer Science', 'Faculty of Computing & Information Technology', 'ADMIN/001')
-on conflict (user_id) do update set
-  full_name = excluded.full_name,
-  email = excluded.email,
-  role = excluded.role,
-  department = excluded.department,
-  faculty = excluded.faculty,
-  staff_id = excluded.staff_id;
-```
+1. Apply all migrations through `202610300008_super_admin_bootstrap.sql` and deploy the Netlify functions.
+2. Generate a token with `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`. In Netlify Site configuration → Environment variables, set `SUPER_ADMIN_BOOTSTRAP_TOKEN` to that value and `SUPER_ADMIN_EMAIL_ALLOWLIST` to the single address that will own the initial admin account. Also set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+3. Send a one-time `POST` to `https://YOUR-SITE.netlify.app/.netlify/functions/bootstrap-super-admin` with header `x-bootstrap-token: YOUR_TOKEN`, `Content-Type: application/json`, and JSON body `{"name":"Your Name","email":"you@example.edu","password":"StrongPass1!"}`. The password must be at least 8 characters and include uppercase, lowercase, a number and a symbol.
+4. Sign in at `https://YOUR-SITE.netlify.app/admin-portal` using the allowlisted email and the password supplied in the POST body. No default password is created.
+5. Remove `SUPER_ADMIN_BOOTSTRAP_TOKEN` and `SUPER_ADMIN_EMAIL_ALLOWLIST` from Netlify and redeploy. The database claim prevents another bootstrap after the first succeeds.
+
+If the function fails before creating an admin, it releases the claim for retry. If an unexpected partial failure requires recovery, inspect `super_admin_bootstrap_claims` in the SQL editor and remove the row only after verifying no admin profile exists.
 
 Create a student-facing adviser assignment using the lecturer UUID and exactly matching cohort strings:
 
@@ -114,7 +111,9 @@ The migrations enable RLS on the application tables and install these policies (
 | Policy | Effect |
 |---|---|
 | `profile self and authorized staff read` | Users read their own profile. Lecturers see only assigned-cohort students and their own assignment; HODs see students/lecturers in their department and the dean; a dean can see HOD profiles in the same faculty. A dean does not get student profiles. |
-| `profile self update` | A user may update their own editable profile. A trigger rejects self-changes to role, department, faculty, matric/staff ID, level, admission session, and transcript-verification fields. Student profiles are inserted by the Auth signup trigger, not by the browser. |
+| `profile self update` | Users may update editable shared identity fields on their own `profiles` row. Authenticated users cannot change their own role, department, or faculty. |
+| `students` policies | Students can read/update their own role-specific row. HODs see students in their department; lecturers see only assigned department/session/level cohorts. The Dean receives no individual student rows. Student matriculation number, level/session, and transcript status are protected from browser edits. |
+| `staff_profiles` policies | Staff can read/update their own editable profile details. HODs see staff in their department, Deans see staff in their faculty, and admins manage all staff detail rows. Staff IDs, adviser cohorts, and first-login password flags are protected. |
 | `adviser assignments visible to their adviser` | An adviser can read their assignment rows. |
 | `students read assigned adviser` | A student can read current and earlier level assignments only within their own department and admission session, so the inbox can list current and past advisers. |
 | `hod manages own department assignments` | HODs manage assignment rows in their department only; checks require the adviser profile to be a lecturer in that same department. |

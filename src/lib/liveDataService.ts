@@ -11,71 +11,80 @@ type ProfileRow = {
   role: UserRole;
   department: string;
   faculty: string;
-  matric_no?: string | null;
-  staff_id?: string | null;
-  level?: string | null;
-  admission_session?: string | null;
-  avatar_url?: string | null;
-  phone?: string | null;
-  has_uploaded_transcript?: boolean | null;
-  transcript_file_name?: string | null;
-  result_prompt_dismissed_semester?: string | null;
-  must_change_password?: boolean | null;
 };
 
-const profileFromRow = (row: ProfileRow): UserProfile => ({
+type StudentRow = { matric_no?: string | null; level?: string | null; admission_session?: string | null; avatar_url?: string | null; phone?: string | null; has_uploaded_transcript?: boolean | null; transcript_file_name?: string | null; result_prompt_dismissed_semester?: string | null };
+type StaffProfileRow = { staff_id?: string | null; level?: string | null; admission_session?: string | null; avatar_url?: string | null; phone?: string | null; must_change_password?: boolean | null };
+
+const profileFromRow = (row: ProfileRow, details: StudentRow | StaffProfileRow = {}): UserProfile => ({
   id: row.user_id,
   name: row.full_name,
   email: row.email,
   role: row.role,
   department: row.department,
   faculty: row.faculty,
-  matricNo: row.matric_no || undefined,
-  staffId: row.staff_id || undefined,
-  level: row.level || undefined,
-  admissionSession: row.admission_session || undefined,
-  avatarUrl: row.avatar_url || '',
-  phone: row.phone || undefined,
-  hasUploadedTranscript: row.has_uploaded_transcript || false,
-  resultPromptDismissedSemester: row.result_prompt_dismissed_semester || undefined,
-  transcriptFileName: row.transcript_file_name || undefined,
-  mustChangePassword: row.must_change_password || false,
+  matricNo: 'matric_no' in details ? details.matric_no || undefined : undefined,
+  staffId: 'staff_id' in details ? details.staff_id || undefined : undefined,
+  level: details.level || undefined,
+  admissionSession: details.admission_session || undefined,
+  avatarUrl: details.avatar_url || '',
+  phone: details.phone || undefined,
+  hasUploadedTranscript: 'has_uploaded_transcript' in details ? details.has_uploaded_transcript || false : false,
+  resultPromptDismissedSemester: 'result_prompt_dismissed_semester' in details ? details.result_prompt_dismissed_semester || undefined : undefined,
+  transcriptFileName: 'transcript_file_name' in details ? details.transcript_file_name || undefined : undefined,
+  mustChangePassword: 'must_change_password' in details ? details.must_change_password || false : false,
 });
 
-const profileToRow = (profile: UserProfile) => ({
-  user_id: profile.id,
+const identityToRow = (profile: UserProfile) => ({
   full_name: profile.name,
   email: profile.email,
   role: profile.role,
   department: profile.department,
   faculty: profile.faculty,
+});
+
+const detailsToRow = (profile: UserProfile) => profile.role === 'student' ? ({
   matric_no: profile.matricNo || null,
+  has_uploaded_transcript: profile.hasUploadedTranscript || false,
+  transcript_file_name: profile.transcriptFileName || null,
+  result_prompt_dismissed_semester: profile.resultPromptDismissedSemester || null,
+  level: profile.level || null,
+  admission_session: profile.admissionSession || null,
+  avatar_url: profile.avatarUrl || null,
+  phone: profile.phone || null,
+}) : ({
   staff_id: profile.staffId || null,
   level: profile.level || null,
   admission_session: profile.admissionSession || null,
   avatar_url: profile.avatarUrl || null,
   phone: profile.phone || null,
-  result_prompt_dismissed_semester: profile.resultPromptDismissedSemester || null,
 });
 
 async function getProfileForUser(user: User): Promise<UserProfile | null> {
   const client = getSupabaseClient();
   if (!client) return null;
-  const { data, error } = await client.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
+  const { data, error } = await client.from('profiles').select('user_id,full_name,email,role,department,faculty').eq('user_id', user.id).maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const profile = profileFromRow(data as ProfileRow);
+  const detailTable = (data as ProfileRow).role === 'student' ? 'students' : 'staff_profiles';
+  const { data: details, error: detailsError } = await client.from(detailTable).select('*').eq('user_id', user.id).maybeSingle();
+  if (detailsError) throw detailsError;
+  const profile = profileFromRow(data as ProfileRow, details || {});
   if (profile.role === 'student' && profile.admissionSession && profile.level) {
     const { data: assignment, error: assignmentError } = await client.from('adviser_assignments').select('adviser_id').eq('department', profile.department).eq('admission_session', profile.admissionSession).eq('level', profile.level).maybeSingle();
     if (assignmentError) throw assignmentError;
     if (assignment) {
-      const { data: adviser, error: adviserError } = await client.from('profiles').select('full_name,email,avatar_url,department').eq('user_id', assignment.adviser_id).maybeSingle();
+      const [{ data: adviser, error: adviserError }, { data: adviserDetails, error: adviserDetailsError }] = await Promise.all([
+        client.from('profiles').select('full_name,email,department').eq('user_id', assignment.adviser_id).maybeSingle(),
+        client.from('staff_profiles').select('avatar_url').eq('user_id', assignment.adviser_id).maybeSingle(),
+      ]);
       if (adviserError) throw adviserError;
+      if (adviserDetailsError) throw adviserDetailsError;
       if (adviser) {
         profile.assignedAdviserId = assignment.adviser_id;
         profile.assignedAdviserName = adviser.full_name;
         profile.assignedAdviserEmail = adviser.email;
-        profile.assignedAdviserAvatar = adviser.avatar_url || undefined;
+        profile.assignedAdviserAvatar = adviserDetails?.avatar_url || undefined;
         profile.assignedAdviserTitle = `Level Adviser, ${adviser.department}`;
       }
     }
@@ -209,14 +218,19 @@ export async function getAccessToken(): Promise<string | null> {
 export async function persistUserProfile(profile: UserProfile): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return;
-  const { error } = await client.from('profiles').update(profileToRow(profile)).eq('user_id', profile.id);
-  if (error) throw error;
+  const detailTable = profile.role === 'student' ? 'students' : 'staff_profiles';
+  const [{ error: identityError }, { error: detailsError }] = await Promise.all([
+    client.from('profiles').update(identityToRow(profile)).eq('user_id', profile.id),
+    client.from(detailTable).update(detailsToRow(profile)).eq('user_id', profile.id),
+  ]);
+  if (identityError) throw identityError;
+  if (detailsError) throw detailsError;
 }
 
 export async function persistResultPromptDismissal(userId: string, semesterKey: string): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return;
-  const { error } = await client.from('profiles')
+  const { error } = await client.from('students')
     .update({ result_prompt_dismissed_semester: semesterKey })
     .eq('user_id', userId);
   if (error) throw error;
@@ -252,11 +266,14 @@ export async function loadStudentAdvisers(profile: UserProfile): Promise<Adviser
   if (!assignments?.length) return fallback;
 
   const adviserIds = [...new Set(assignments.map((assignment) => assignment.adviser_id))];
-  const { data: adviserProfiles, error: adviserError } = await client.from('profiles')
-    .select('user_id,full_name,email,department,avatar_url')
-    .in('user_id', adviserIds);
+  const [{ data: adviserProfiles, error: adviserError }, { data: staffDetails, error: staffDetailsError }] = await Promise.all([
+    client.from('profiles').select('user_id,full_name,email,department').in('user_id', adviserIds),
+    client.from('staff_profiles').select('user_id,avatar_url').in('user_id', adviserIds),
+  ]);
   if (adviserError) throw adviserError;
+  if (staffDetailsError) throw staffDetailsError;
   const byId = new Map((adviserProfiles || []).map((adviser) => [adviser.user_id, adviser]));
+  const avatarById = new Map((staffDetails || []).map((row) => [row.user_id, row.avatar_url]));
   const orderedAssignments = [...assignments].sort((a, b) => Number(b.level.match(/^\d+/)?.[0] || 0) - Number(a.level.match(/^\d+/)?.[0] || 0));
   const advisers = orderedAssignments.flatMap((assignment) => {
     const adviser = byId.get(assignment.adviser_id);
@@ -267,7 +284,7 @@ export async function loadStudentAdvisers(profile: UserProfile): Promise<Adviser
       title: `Level Adviser, ${adviser.department}`,
       department: adviser.department,
       email: adviser.email,
-      avatarUrl: adviser.avatar_url || '',
+      avatarUrl: avatarById.get(adviser.user_id) || '',
       assignedLevel: assignment.level,
       assignedSession: assignment.admission_session,
       studentLoad: 0,
@@ -390,28 +407,42 @@ export async function loadStaffMessageContacts(profile: UserProfile): Promise<Me
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured || !['hod', 'dean'].includes(profile.role)) return [];
   const roles = profile.role === 'hod' ? ['lecturer', 'dean'] : ['hod'];
-  let query = client.from('profiles').select('user_id,full_name,email,role,department,avatar_url').in('role', roles);
+  let query = client.from('profiles').select('user_id,full_name,email,role,department,faculty').in('role', roles);
   if (profile.role === 'hod') query = query.or(`department.eq.${profile.department},faculty.eq.${profile.faculty}`);
   else query = query.eq('faculty', profile.faculty);
   const { data, error } = await query.order('full_name');
   if (error) throw error;
+  const ids = (data || []).map((row) => row.user_id);
+  const { data: details, error: detailsError } = await client.from('staff_profiles').select('user_id,avatar_url').in('user_id', ids);
+  if (detailsError) throw detailsError;
+  const avatarById = new Map((details || []).map((row) => [row.user_id, row.avatar_url]));
   return (data || []).map((row) => ({
     id: row.user_id,
     name: row.full_name,
     email: row.email,
     role: row.role as UserRole,
     department: row.department,
-    avatarUrl: row.avatar_url || undefined,
+    avatarUrl: avatarById.get(row.user_id) || undefined,
   }));
 }
 
 export async function loadLecturerConversations(userId: string): Promise<StudentConversation[]> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return [];
-  const { data: students, error: studentError } = await client.from('profiles')
-    .select('user_id,full_name,email,department,matric_no,level,admission_session,has_uploaded_transcript')
+  const { data: studentProfiles, error: studentError } = await client.from('profiles')
+    .select('user_id,full_name,email,department')
     .eq('role', 'student');
   if (studentError) throw studentError;
+  const studentIdsForDetails = (studentProfiles || []).map((student) => student.user_id);
+  if (!studentIdsForDetails.length) return [];
+  const { data: details, error: detailsError } = await client.from('students')
+    .select('user_id,matric_no,level,admission_session,has_uploaded_transcript').in('user_id', studentIdsForDetails);
+  if (detailsError) throw detailsError;
+  const detailById = new Map((details || []).map((row) => [row.user_id, row]));
+  const students = (studentProfiles || []).flatMap((student) => {
+    const detail = detailById.get(student.user_id);
+    return detail ? [{ ...student, ...detail }] : [];
+  });
   if (!students?.length) return [];
   const studentIds = students.map((student) => student.user_id);
   const [{ data: results, error: resultsError }, { data: messageRows, error: messagesError }] = await Promise.all([
@@ -567,14 +598,18 @@ export async function loadStaffDirectory(): Promise<StaffMember[]> {
   const client = getSupabaseClient();
   if (!client) return [];
   const { data, error } = await client.from('profiles')
-    .select('user_id,full_name,email,role,department,faculty,staff_id,level,admission_session,phone,created_at')
+    .select('user_id,full_name,email,role,department,faculty,created_at')
     .in('role', ['lecturer', 'hod', 'dean']);
   if (error) throw error;
+  const ids = (data || []).map((row) => row.user_id);
+  const { data: details, error: detailsError } = ids.length ? await client.from('staff_profiles').select('user_id,staff_id,level,admission_session,phone').in('user_id', ids) : { data: [], error: null };
+  if (detailsError) throw detailsError;
+  const detailById = new Map((details || []).map((row) => [row.user_id, row]));
   return (data || []).map((row) => ({
-    id: row.user_id, name: row.full_name, email: row.email, staffId: row.staff_id || '',
+    id: row.user_id, name: row.full_name, email: row.email, staffId: detailById.get(row.user_id)?.staff_id || '',
     role: row.role, department: row.department, faculty: row.faculty,
-    assignedLevel: row.level || undefined, assignedSession: row.admission_session || undefined,
-    phone: row.phone || undefined, avatarUrl: '', status: 'Active',
+    assignedLevel: detailById.get(row.user_id)?.level || undefined, assignedSession: detailById.get(row.user_id)?.admission_session || undefined,
+    phone: detailById.get(row.user_id)?.phone || undefined, avatarUrl: '', status: 'Active',
     dateRegistered: row.created_at ? new Date(row.created_at).toLocaleDateString() : '',
   }));
 }
@@ -584,12 +619,16 @@ export async function loadAdministrators(): Promise<AdministratorProfile[]> {
   const client = getSupabaseClient();
   if (!client) return [];
   const { data, error } = await client.from('profiles')
-    .select('user_id,full_name,email,staff_id,department,faculty,phone')
+    .select('user_id,full_name,email,department,faculty')
     .eq('role', 'admin').order('full_name');
   if (error) throw error;
+  const ids = (data || []).map((row) => row.user_id);
+  const { data: details, error: detailsError } = ids.length ? await client.from('staff_profiles').select('user_id,staff_id,phone').in('user_id', ids) : { data: [], error: null };
+  if (detailsError) throw detailsError;
+  const detailById = new Map((details || []).map((row) => [row.user_id, row]));
   return (data || []).map((row) => ({
-    id: row.user_id, name: row.full_name, email: row.email, staffId: row.staff_id || '',
-    department: row.department, faculty: row.faculty, phone: row.phone || undefined,
+    id: row.user_id, name: row.full_name, email: row.email, staffId: detailById.get(row.user_id)?.staff_id || '',
+    department: row.department, faculty: row.faculty, phone: detailById.get(row.user_id)?.phone || undefined,
   }));
 }
 
@@ -619,11 +658,11 @@ export type AdministratorProfileUpdate = Omit<AdministratorProfile, 'id' | 'emai
 export async function updateAdministratorProfile(id: string, updates: AdministratorProfileUpdate): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return { success: false, error: 'Administrator profiles require the live Supabase service.' };
-  const { error } = await client.from('profiles').update({
-    full_name: updates.name.trim(), staff_id: updates.staffId.trim().toUpperCase(),
-    department: updates.department, faculty: updates.faculty, phone: updates.phone?.trim() || null,
-  }).eq('user_id', id).eq('role', 'admin');
-  return error ? { success: false, error: error.message } : { success: true };
+  const [{ error }, { error: detailError }] = await Promise.all([
+    client.from('profiles').update({ full_name: updates.name.trim(), department: updates.department, faculty: updates.faculty }).eq('user_id', id).eq('role', 'admin'),
+    client.from('staff_profiles').update({ staff_id: updates.staffId.trim().toUpperCase(), phone: updates.phone?.trim() || null }).eq('user_id', id),
+  ]);
+  return error || detailError ? { success: false, error: error?.message || detailError?.message } : { success: true };
 }
 
 export type StaffProfileUpdate = Pick<ManualStaffRegistrationPayload, 'name' | 'staffId' | 'role' | 'department' | 'faculty'>
@@ -635,17 +674,11 @@ export async function updateStaffProfile(userId: string, updates: StaffProfileUp
   }
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Database service is unavailable.' };
-  const { error } = await client.from('profiles').update({
-    full_name: updates.name.trim(),
-    staff_id: updates.staffId.trim().toUpperCase() || null,
-    role: updates.role,
-    department: updates.department,
-    faculty: updates.faculty,
-    level: updates.assignedLevel || null,
-    admission_session: updates.assignedSession || null,
-    phone: updates.phone?.trim() || null,
-  }).eq('user_id', userId);
-  return error ? { success: false, error: error.message } : { success: true };
+  const [{ error }, { error: detailError }] = await Promise.all([
+    client.from('profiles').update({ full_name: updates.name.trim(), role: updates.role, department: updates.department, faculty: updates.faculty }).eq('user_id', userId),
+    client.from('staff_profiles').update({ staff_id: updates.staffId.trim().toUpperCase() || null, level: updates.assignedLevel || null, admission_session: updates.assignedSession || null, phone: updates.phone?.trim() || null }).eq('user_id', userId),
+  ]);
+  return error || detailError ? { success: false, error: error?.message || detailError?.message } : { success: true };
 }
 
 const DEPARTMENT_HOD_STORAGE_KEY = 'lasu_department_hod_assignments';

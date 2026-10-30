@@ -27,7 +27,7 @@ export async function handler(event) {
   if (permissionError || !canManage) return json(403, { error: 'You are not authorized to reset this staff account.' });
   const { error: updateError } = await admin.auth.admin.updateUserById(target.user_id, { password });
   if (updateError) return json(400, { error: updateError.message });
-  const { error: profileError } = await admin.from('profiles').update({ must_change_password: true }).eq('user_id', target.user_id);
+  const { error: profileError } = await admin.from('staff_profiles').update({ must_change_password: true }).eq('user_id', target.user_id);
   if (profileError) return json(500, { error: profileError.message });
   return json(200, { success: true });
 }

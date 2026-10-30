@@ -18,11 +18,14 @@ export async function handler(event) {
   if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9\s]/.test(password)) {
     return json(400, { error: 'Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.' });
   }
-  const { data: profile, error: profileError } = await admin.from('profiles').select('must_change_password,role').eq('user_id', user.id).maybeSingle();
-  if (profileError || !profile || !profile.must_change_password || profile.role === 'student') return json(403, { error: 'This account does not require an initial staff password change.' });
+  const [{ data: profile, error: profileError }, { data: staff, error: staffError }] = await Promise.all([
+    admin.from('profiles').select('role').eq('user_id', user.id).maybeSingle(),
+    admin.from('staff_profiles').select('must_change_password').eq('user_id', user.id).maybeSingle(),
+  ]);
+  if (profileError || staffError || !profile || profile.role === 'student' || !staff?.must_change_password) return json(403, { error: 'This account does not require an initial staff password change.' });
   const { error: updateError } = await admin.auth.admin.updateUserById(user.id, { password });
   if (updateError) return json(400, { error: updateError.message });
-  const { error: clearError } = await admin.from('profiles').update({ must_change_password: false }).eq('user_id', user.id);
+  const { error: clearError } = await admin.from('staff_profiles').update({ must_change_password: false }).eq('user_id', user.id);
   if (clearError) return json(500, { error: clearError.message });
   return json(200, { success: true });
 }

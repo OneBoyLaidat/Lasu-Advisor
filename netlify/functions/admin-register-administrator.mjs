@@ -40,20 +40,20 @@ export async function handler(event) {
 
   const { data: created, error: createError } = await serviceClient.auth.admin.createUser({
     email, password, email_confirm: true,
-    user_metadata: {
-      account_type: 'staff', full_name: name, role: 'admin', staff_id: staffId,
-      department, faculty, phone: phone || null, must_change_password: true,
-    },
+    user_metadata: { account_type: 'student', full_name: name, role: 'student', department, faculty },
   });
   if (createError || !created.user) return json(400, { error: createError?.message || 'Could not create the administrator login.' });
 
-  const { error: profileError } = await serviceClient.from('profiles').insert({
-    user_id: created.user.id, full_name: name, email, role: 'admin', staff_id: staffId,
-    department, faculty, phone: phone || null, must_change_password: true,
-  });
+  const { error: profileError } = await serviceClient.from('profiles').update({ full_name: name, email, role: 'admin', department, faculty }).eq('user_id', created.user.id);
   if (profileError) {
     await serviceClient.auth.admin.deleteUser(created.user.id);
     return json(400, { error: profileError.message });
   }
+  const { error: detailsError } = await serviceClient.from('staff_profiles').insert({ user_id: created.user.id, staff_id: staffId, phone: phone || null, must_change_password: true });
+  if (detailsError) {
+    await serviceClient.auth.admin.deleteUser(created.user.id);
+    return json(400, { error: detailsError.message });
+  }
+  await serviceClient.from('students').delete().eq('user_id', created.user.id);
   return json(201, { success: true, administratorId: created.user.id });
 }
