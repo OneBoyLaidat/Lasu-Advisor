@@ -29,7 +29,7 @@ Restart the dev server after editing `.env`. Local development falls back to dem
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, then `202610300001_backfill_student_profiles.sql`. The first creates the tables, triggers, indexes, policies, and private Storage bucket `result-documents`; the second repairs profiles for student accounts registered before the Auth trigger was installed.
+Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, then `202610300002_student_semester_results_and_advisers.sql`. The first creates the tables, triggers, indexes, policies, and private Storage bucket `result-documents`; the second repairs profiles for student accounts registered before the Auth trigger was installed; the third enables semester-based result prompts and current/past adviser messaging.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|
@@ -42,8 +42,9 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `level`, `admission_session` | `text` nullable | Student cohort, e.g. `300 Level`, `2023/2024` |
 | | `avatar_url` | `text` nullable | Profile image URL |
 | | `phone` | `text` nullable | Profile phone |
-| | `has_uploaded_transcript` | `boolean` default `false` | Removes repeat upload prompts after verified upload |
+| | `has_uploaded_transcript` | `boolean` default `false` | Whether any verified result has been uploaded |
 | | `transcript_file_name` | `text` nullable | Latest uploaded result filename |
+| | `result_prompt_dismissed_semester` | `text` nullable | Semester key for a student's “I don't have results yet” choice |
 | | `created_at` | `timestamptz` default `now()` | Creation timestamp |
 | `adviser_assignments` | `adviser_id` | `uuid` FK to `profiles.user_id` | Assigned lecturer/adviser |
 | | `department`, `admission_session`, `level` | `text` | Cohort key; the three columns form the primary key |
@@ -54,6 +55,7 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `document_student_name` | `text` | OCR-read name checked against `profiles.full_name` |
 | | `courses` | `jsonb` | Array of course objects described below |
 | | `cgpa` | `numeric(4,2)` | Calculated CGPA |
+| | `semester_key` | `text` nullable | Key used to show a new result prompt once each semester |
 | | `created_at` | `timestamptz` default `now()` | Upload time |
 | `messages` | `id` | `bigint` identity PK | Message identifier |
 | | `sender_id`, `recipient_id` | `uuid` FK to `profiles.user_id` | Conversation participants |
@@ -63,6 +65,8 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `read_at` | `timestamptz` nullable | Null means unread; set when recipient opens the conversation |
 
 Each `student_results.courses` array item follows the frontend `CourseResult` shape: `code` (string), `title` (string), `units` (number), `grade` (string), `score` (number), `status` (string), `semester` (string), `academicYear` (string), and `gpPoints` (number). Example: `[{"code":"CSC301","title":"Data Structures","units":3,"grade":"A","score":78,"status":"Passed","semester":"First Semester","academicYear":"2024/2025","gpPoints":15}]`.
+
+The final migration creates `public.get_academic_analytics()`, an aggregate-only function scoped to the signed-in lecturer's assigned cohorts, HOD's department, or Dean's faculty. It does not return individual student profiles to a Dean.
 
 ### Provision staff and the first adviser assignment
 
@@ -101,7 +105,7 @@ The migration enables RLS on all four tables and installs these policies (the po
 | `profile self and authorized staff read` | Users read their own profile. Lecturers see only assigned-cohort students and their own assignment; HODs see students/lecturers in their department and the dean; a dean can see HOD profiles in the same faculty. A dean does not get student profiles. |
 | `profile self update` | A user may update their own editable profile. A trigger rejects self-changes to role, department, faculty, matric/staff ID, level, admission session, and transcript-verification fields. Student profiles are inserted by the Auth signup trigger, not by the browser. |
 | `adviser assignments visible to their adviser` | An adviser can read their assignment rows. |
-| `students read assigned adviser` | A student can read only the assignment matching their department, admission session, and level. |
+| `students read assigned adviser` | A student can read current and earlier level assignments only within their own department and admission session, so the inbox can list current and past advisers. |
 | `hod manages own department assignments` | HODs manage assignment rows in their department only; checks require the adviser profile to be a lecturer in that same department. |
 | `student results scoped read` | Students read their own results; lecturers read only results for assigned cohorts; HODs read their department's results. Dean receives no individual results. |
 | `student results own insert` | Students insert their own result only, `document_student_name` must equal the current profile's name, and `file_path` must identify a PDF object in their own private storage folder. An insert trigger sets the profile's verified-upload flag and filename. |

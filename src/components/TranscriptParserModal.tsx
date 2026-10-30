@@ -14,6 +14,7 @@ import { getAccessToken } from '../lib/liveDataService';
 interface TranscriptParserModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onDismissPrompt?: () => void;
   expectedStudentName: string;
   onTranscriptParsed: (
     courses: CourseResult[],
@@ -29,6 +30,7 @@ interface TranscriptParserModalProps {
 export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
   isOpen,
   onClose,
+  onDismissPrompt,
   expectedStudentName,
   onTranscriptParsed,
 }) => {
@@ -755,6 +757,13 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            {onDismissPrompt && <button
+              type="button"
+              onClick={onDismissPrompt}
+              className="flex-1 sm:flex-none px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white"
+            >
+              I don’t have results yet
+            </button>}
             <button
               onClick={onClose}
               className="flex-1 sm:flex-none px-4 py-2 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"

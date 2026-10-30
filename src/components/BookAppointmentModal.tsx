@@ -7,6 +7,8 @@ interface BookAppointmentModalProps {
   onClose: () => void;
   onConfirmBooking: (appointment: Appointment) => void;
   studentName: string;
+  studentId: string;
+  adviserName: string;
 }
 
 export const BookAppointmentModal: React.FC<BookAppointmentModalProps> = ({
@@ -14,8 +16,10 @@ export const BookAppointmentModal: React.FC<BookAppointmentModalProps> = ({
   onClose,
   onConfirmBooking,
   studentName,
+  studentId,
+  adviserName,
 }) => {
-  const [date, setDate] = useState('2026-08-25');
+  const [date, setDate] = useState(() => new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
   const [time, setTime] = useState('11:00 AM');
   const [topic, setTopic] = useState('Course Selection & Capstone Guidance');
   const [format, setFormat] = useState<'In-person' | 'Virtual (Google Meet)' | 'Phone Call'>('In-person');
@@ -27,9 +31,9 @@ export const BookAppointmentModal: React.FC<BookAppointmentModalProps> = ({
     e.preventDefault();
     const newAppointment: Appointment = {
       id: `apt_${Date.now()}`,
-      studentId: 'usr_student_01',
+      studentId,
       studentName: studentName,
-      adviserName: 'Dr. Sarah Jenkins',
+      adviserName,
       date,
       time,
       topic,
@@ -79,7 +83,7 @@ export const BookAppointmentModal: React.FC<BookAppointmentModalProps> = ({
           <div>
             <label className="block font-semibold text-slate-700 mb-1">Adviser</label>
             <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-900 font-medium flex items-center justify-between">
-              <span>Dr. Sarah Jenkins (300L Adviser)</span>
+              <span>{adviserName}</span>
               <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-semibold">
                 Available
               </span>

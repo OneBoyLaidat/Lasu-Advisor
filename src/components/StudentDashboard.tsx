@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import { CourseResult, StudentStats, UserProfile } from '../types';
-import { ADVISER_AVATAR } from '../data/mockData';
+import React, { useEffect, useState } from 'react';
+import { Adviser, CourseResult, StudentStats, UserProfile } from '../types';
+import { ProfileMonogram } from './ProfileMonogram';
 
 interface StudentDashboardProps {
   studentProfile: UserProfile;
@@ -10,6 +10,8 @@ interface StudentDashboardProps {
   onOpenBookAppointment: () => void;
   onOpenTranscriptModal: () => void;
   hasNudgeNotice?: boolean;
+  onDismissResultPrompt: () => void;
+  assignedAdviser?: Adviser;
 }
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
@@ -20,12 +22,20 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   onOpenBookAppointment,
   onOpenTranscriptModal,
   hasNudgeNotice = false,
+  onDismissResultPrompt,
+  assignedAdviser,
 }) => {
-  const [selectedSemester, setSelectedSemester] = useState<string>('Fall 2024');
+  const semesterOptions = [...new Set(courseResults.map((course) => course.semester))];
+  const [selectedSemester, setSelectedSemester] = useState<string>('');
   const [gradeFilter, setGradeFilter] = useState<string>('ALL');
 
+  useEffect(() => {
+    if (semesterOptions.length && !semesterOptions.includes(selectedSemester)) setSelectedSemester(semesterOptions[0]);
+    if (!semesterOptions.length) setSelectedSemester('');
+  }, [courseResults, selectedSemester]);
+
   const filteredCourses = courseResults.filter((c) => {
-    const matchesSemester = c.semester === selectedSemester;
+    const matchesSemester = !selectedSemester || c.semester === selectedSemester;
     const matchesGrade = gradeFilter === 'ALL' || c.grade === gradeFilter;
     return matchesSemester && matchesGrade;
   });
@@ -43,18 +53,29 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             Academic Overview
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            {selectedSemester} • {studentProfile.department}, B.S. • Matric:{' '}
-            <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">
-              {studentProfile.matricNo || 'CSC/2024/001'}
-            </span>
+            {studentProfile.department}{studentProfile.matricNo ? <> • Matric: <span className="font-mono font-semibold text-emerald-700 dark:text-emerald-400">{studentProfile.matricNo}</span></> : null}
           </p>
         </div>
 
         <div className="flex items-center gap-2.5">
-          {studentProfile.hasUploadedTranscript ? (
+          {hasNudgeNotice ? (
+            <button
+              id="open-transcript-btn"
+              onClick={onOpenTranscriptModal}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-xs"
+            >
+              <span className="material-symbols-outlined text-[16px]">document_scanner</span>
+              Upload this semester’s results
+            </button>
+          ) : studentProfile.hasUploadedTranscript ? (
             <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs font-semibold text-emerald-800 dark:text-emerald-300">
               <span className="material-symbols-outlined text-[16px] text-emerald-600 dark:text-emerald-400">verified</span>
               <span>Result Slip Verified</span>
+            </div>
+          ) : studentProfile.resultPromptDismissedSemester ? (
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <span className="material-symbols-outlined text-[16px]">schedule</span>
+              <span>Result upload deferred</span>
             </div>
           ) : (
             <button
@@ -69,8 +90,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
       </div>
 
-      {/* Top Row: 4 Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+      {/* Top Row: Student performance metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
         {/* Card 1: Cumulative GPA */}
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col justify-between relative shadow-xs hover:shadow-md transition-shadow">
           <div>
@@ -170,42 +191,6 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </div>
         </div>
 
-        {/* Card 4: Upcoming Deadlines */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 flex flex-col relative shadow-xs hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-[18px]">
-                event_note
-              </span>
-              Deadlines
-            </h3>
-            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-              Active
-            </span>
-          </div>
-
-          <div className="space-y-3 flex-1 flex flex-col justify-center">
-            <div className="flex items-start gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 shrink-0" />
-              <div>
-                <p className="text-xs text-slate-900 dark:text-slate-100 font-semibold leading-tight">
-                  CSC401 Project Proposal
-                </p>
-                <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium mt-0.5">Tomorrow, 11:59 PM</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-2.5">
-              <div className="w-2 h-2 rounded-full bg-rose-500 mt-1.5 shrink-0" />
-              <div>
-                <p className="text-xs text-slate-900 dark:text-slate-100 font-semibold leading-tight">
-                  Course Registration Closes
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Nov 15, 5:00 PM</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Middle Row: Table & Sidebars */}
@@ -231,11 +216,10 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                     id="semester-select"
                     value={selectedSemester}
                     onChange={(e) => setSelectedSemester(e.target.value)}
+                    disabled={!semesterOptions.length}
                     className="w-full appearance-none bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 pl-3 pr-8 text-xs text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 cursor-pointer shadow-2xs"
                   >
-                    <option value="Fall 2024" className="dark:bg-slate-800">Fall 2024 (Current)</option>
-                    <option value="Spring 2024" className="dark:bg-slate-800">Spring 2024</option>
-                    <option value="Fall 2023" className="dark:bg-slate-800">Fall 2023</option>
+                    {semesterOptions.length ? semesterOptions.map((semester) => <option key={semester} value={semester} className="dark:bg-slate-800">{semester}</option>) : <option value="">No results uploaded</option>}
                   </select>
                   <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none text-[18px]">
                     expand_more
@@ -290,7 +274,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                   {filteredCourses.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-slate-500">
-                        No course records found matching the current filter.
+                        {courseResults.length ? 'No course records match the current filter.' : 'No result records have been uploaded yet.'}
                       </td>
                     </tr>
                   ) : (
@@ -338,7 +322,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                 Official NUC 5.0 Grading System
               </span>
-              {!studentProfile.hasUploadedTranscript && <button
+              {hasNudgeNotice && <button
                 id="view-full-transcript-link"
                 onClick={onOpenTranscriptModal}
                 className="text-xs text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-300 transition-colors inline-flex items-center gap-1 font-bold"
@@ -359,30 +343,22 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </div>
 
             <div className="flex flex-col items-center text-center mb-5 relative z-10">
-              <div className="w-16 h-16 rounded-full border-2 border-emerald-200 dark:border-emerald-700 p-0.5 mb-3 relative bg-slate-50 dark:bg-slate-800">
+              <div className="w-16 h-16 rounded-full border-2 border-emerald-200 dark:border-emerald-700 p-0.5 mb-3 relative bg-slate-50 dark:bg-slate-800 grid place-items-center">
                 <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900 z-10" />
-                <img
-                  src={studentProfile.assignedAdviserAvatar || ADVISER_AVATAR}
-                  alt={studentProfile.assignedAdviserName || 'Level Adviser'}
-                  className="w-full h-full rounded-full object-cover"
-                />
+                {assignedAdviser?.avatarUrl ? <img src={assignedAdviser.avatarUrl} alt={assignedAdviser.name} className="w-full h-full rounded-full object-cover" /> : <ProfileMonogram name={assignedAdviser?.name || ''} sizeClassName="h-full w-full text-lg" />}
               </div>
               <h4 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                {studentProfile.assignedAdviserName || 'Dr. Sarah Jenkins'}
+                {assignedAdviser?.name || 'No adviser assigned yet'}
               </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {studentProfile.assignedAdviserTitle || 'Assoc. Prof, Computer Science'}
-              </p>
-              <span className="mt-2 text-[10px] bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 font-semibold">
-                Office Hours: Mon/Wed 10-2pm
-              </span>
+              {assignedAdviser && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{assignedAdviser.title}</p>}
             </div>
 
             <div className="space-y-2 relative z-10">
               <button
                 id="message-adviser-btn"
                 onClick={onOpenAdvisorChat}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg py-2 px-4 text-xs font-semibold transition-all flex items-center justify-center gap-2 group shadow-sm"
+                disabled={!assignedAdviser}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg py-2 px-4 text-xs font-semibold transition-all flex items-center justify-center gap-2 group shadow-sm"
               >
                 <span className="material-symbols-outlined text-[16px]">forum</span>
                 Message Adviser
@@ -391,7 +367,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <button
                 id="book-appointment-btn"
                 onClick={onOpenBookAppointment}
-                className="w-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg py-2 px-4 text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-2xs"
+                disabled={!assignedAdviser}
+                className="w-full bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-lg py-2 px-4 text-xs font-semibold transition-colors flex items-center justify-center gap-2 shadow-2xs"
               >
                 <span className="material-symbols-outlined text-[16px] text-slate-500 dark:text-slate-400">event</span>
                 Book Appointment
@@ -401,10 +378,13 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
       </div>
       {/* Result and transcript compliance stays at the bottom of the profile page. */}
-      {(hasNudgeNotice || !studentProfile.hasUploadedTranscript) && (
+      {hasNudgeNotice && (
         <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
-          <div><h3 className="text-sm font-bold text-amber-950 dark:text-amber-200">Result and Transcript Compliance <span className="ml-2 text-[10px] uppercase">Action Required</span></h3><p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-1">Upload your official result slip for session audit and grade verification.</p></div>
-          <button onClick={onOpenTranscriptModal} className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm"><span className="material-symbols-outlined text-[16px]">upload_file</span>Upload Result PDF</button>
+          <div><h3 className="text-sm font-bold text-amber-950 dark:text-amber-200">Results needed for this semester</h3><p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-1">Upload the result slip for the current semester when it is available.</p></div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={onOpenTranscriptModal} className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-sm"><span className="material-symbols-outlined text-[16px]">upload_file</span>Upload Result PDF</button>
+            <button onClick={onDismissResultPrompt} className="rounded-lg border border-amber-300 dark:border-amber-700 px-3 py-2 text-xs font-semibold text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40">I don’t have results yet</button>
+          </div>
         </div>
       )}
     </div>

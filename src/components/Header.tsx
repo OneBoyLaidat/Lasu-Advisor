@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { UserProfile, UserRole, NotificationItem } from '../types';
+import { ProfileMonogram } from './ProfileMonogram';
 
 interface HeaderProps {
   userProfile: UserProfile;
@@ -15,6 +16,7 @@ interface HeaderProps {
   onOpenTranscriptModal?: () => void;
   isDark?: boolean;
   onToggleDark?: () => void;
+  sidebarExpanded?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTranscriptModal,
   isDark,
   onToggleDark,
+  sidebarExpanded = false,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -39,7 +42,7 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header
       id="top-header"
-      className="fixed top-0 right-0 w-full md:w-[calc(100%-15rem)] h-16 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs flex justify-between items-center px-4 md:px-6 z-40 transition-colors duration-200"
+      className={`fixed top-0 right-0 w-full ${sidebarExpanded ? 'md:w-[calc(100%-15rem)]' : 'md:w-[calc(100%-5rem)]'} h-16 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-xs flex justify-between items-center px-4 md:px-6 z-40 transition-[width,background-color] duration-200`}
     >
       {/* Left side: Hamburger + Title */}
       <div className="flex items-center gap-3 md:gap-4">
@@ -64,19 +67,6 @@ export const Header: React.FC<HeaderProps> = ({
           </h2>
           <div className="sm:hidden flex items-center gap-2">
             <span className="text-emerald-700 dark:text-emerald-400 font-bold text-sm">LASU Advisor</span>
-            <span
-              className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${
-                userRole === 'student'
-                  ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
-                  : userRole === 'lecturer'
-                  ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                  : userRole === 'hod'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                  : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
-              }`}
-            >
-              {userRole}
-            </span>
           </div>
         </div>
       </div>
@@ -228,13 +218,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="flex items-center gap-2 p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-slate-200 dark:border-slate-700"
               aria-label="User Menu"
             >
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800">
-                <img
-                  src={userProfile.avatarUrl}
-                  alt={userProfile.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
+              <ProfileMonogram name={userProfile.name} sizeClassName="h-7 w-7 sm:h-8 sm:w-8 text-[10px]" />
               <span className="material-symbols-outlined text-slate-500 dark:text-slate-400 text-[16px] hidden sm:block pr-1">
                 expand_more
               </span>
@@ -247,13 +231,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className="absolute right-0 mt-3 w-64 bg-white dark:bg-slate-900 rounded-xl p-3 shadow-xl z-50 border border-slate-200 dark:border-slate-800 animate-in fade-in slide-in-from-top-2 duration-200"
               >
                 <div className="flex items-center gap-3 p-2 pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <div className="w-10 h-10 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 shrink-0">
-                    <img
-                      src={userProfile.avatarUrl}
-                      alt={userProfile.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
+                  <ProfileMonogram name={userProfile.name} sizeClassName="h-10 w-10 text-sm" />
                   <div className="overflow-hidden">
                     <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                       {userProfile.name}

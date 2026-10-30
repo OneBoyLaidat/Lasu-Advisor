@@ -1,4 +1,5 @@
 import { CourseResult } from '../types';
+import { getCurrentAcademicSession, getCurrentSemesterLabel } from './academicUtils';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -237,8 +238,8 @@ export function parseTranscriptText(rawText: string, fileName: string): ParsedTr
         grade,
         score,
         status,
-        semester: 'Fall 2024',
-        academicYear: '2024/2025',
+        semester: getCurrentSemesterLabel(),
+        academicYear: getCurrentAcademicSession(),
         gpPoints: isMissingUnits ? 0 : units * gp,
         isMissingCode: false,
         isMissingTitle,

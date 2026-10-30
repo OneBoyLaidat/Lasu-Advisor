@@ -28,6 +28,7 @@ export interface UserProfile {
   avatarUrl: string;
   phone?: string;
   hasUploadedTranscript?: boolean;
+  resultPromptDismissedSemester?: string;
   transcriptUploadDate?: string;
   transcriptFileName?: string;
   assignedAdviserId?: string;
@@ -45,7 +46,7 @@ export interface CourseResult {
   grade: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | '-';
   score: number | string;
   status: 'Passed' | 'Failed' | 'In Progress';
-  semester: 'Fall 2024' | 'Spring 2024' | 'Fall 2023' | 'Spring 2023';
+  semester: string;
   academicYear: string;
   gpPoints: number;
 }
@@ -63,6 +64,14 @@ export interface StudentStats {
   totalWeeks: number;
   assessmentsDone: number;
   totalAssessments: number;
+}
+
+export interface AcademicAnalytics {
+  studentCount: number;
+  studentsWithResults: number;
+  meanCgpa: number | null;
+  classifications: Array<{ name: string; count: number }>;
+  courses: Array<{ code: string; title: string; attempts: number; passRate: number }>;
 }
 
 export interface Adviser {

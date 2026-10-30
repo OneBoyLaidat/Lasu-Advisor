@@ -27,6 +27,19 @@ export function getCurrentAcademicSession(referenceDate: Date = new Date()): str
   }
 }
 
+/** Stable per-semester key used to keep result prompts semester-specific. */
+export function getCurrentSemesterKey(referenceDate: Date = new Date()): string {
+  const month = referenceDate.getMonth();
+  const semester = month >= 6 || month === 0 ? 'S1' : 'S2';
+  return `${getCurrentAcademicSession(referenceDate)}-${semester}`;
+}
+
+export function getCurrentSemesterLabel(referenceDate: Date = new Date()): string {
+  const month = referenceDate.getMonth();
+  const semester = month >= 6 || month === 0 ? 'First Semester' : 'Second Semester';
+  return `${semester} ${getCurrentAcademicSession(referenceDate)}`;
+}
+
 /**
  * Returns a dynamically computed list of academic sessions including the current session,
  * upcoming session, and historical cohorts down to 2017/2018.

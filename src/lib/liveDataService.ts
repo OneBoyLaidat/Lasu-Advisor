@@ -1,7 +1,8 @@
 import { User } from '@supabase/supabase-js';
-import { CourseResult, MessageContact, StudentConversation, UserProfile, UserRole } from '../types';
+import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConversation, UserProfile, UserRole } from '../types';
 import { AuthResult, authenticateUser, registerNewUser } from './authService';
 import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
+import { getCurrentSemesterKey } from './academicUtils';
 
 type ProfileRow = {
   user_id: string;
@@ -18,6 +19,7 @@ type ProfileRow = {
   phone?: string | null;
   has_uploaded_transcript?: boolean | null;
   transcript_file_name?: string | null;
+  result_prompt_dismissed_semester?: string | null;
 };
 
 const profileFromRow = (row: ProfileRow): UserProfile => ({
@@ -34,6 +36,7 @@ const profileFromRow = (row: ProfileRow): UserProfile => ({
   avatarUrl: row.avatar_url || '',
   phone: row.phone || undefined,
   hasUploadedTranscript: row.has_uploaded_transcript || false,
+  resultPromptDismissedSemester: row.result_prompt_dismissed_semester || undefined,
   transcriptFileName: row.transcript_file_name || undefined,
 });
 
@@ -50,6 +53,7 @@ const profileToRow = (profile: UserProfile) => ({
   admission_session: profile.admissionSession || null,
   avatar_url: profile.avatarUrl || null,
   phone: profile.phone || null,
+  result_prompt_dismissed_semester: profile.resultPromptDismissedSemester || null,
 });
 
 async function getProfileForUser(user: User): Promise<UserProfile | null> {
@@ -207,6 +211,80 @@ export async function persistUserProfile(profile: UserProfile): Promise<void> {
   if (error) throw error;
 }
 
+export async function persistResultPromptDismissal(userId: string, semesterKey: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return;
+  const { error } = await client.from('profiles')
+    .update({ result_prompt_dismissed_semester: semesterKey })
+    .eq('user_id', userId);
+  if (error) throw error;
+}
+
+export async function loadStudentAdvisers(profile: UserProfile): Promise<Adviser[]> {
+  const fallback: Adviser[] = profile.assignedAdviserEmail ? [{
+    id: profile.assignedAdviserId || profile.assignedAdviserEmail,
+    name: profile.assignedAdviserName || 'Level Adviser',
+    title: profile.assignedAdviserTitle || 'Level Adviser',
+    department: profile.department,
+    email: profile.assignedAdviserEmail,
+    avatarUrl: profile.assignedAdviserAvatar || '',
+    assignedLevel: profile.level || '',
+    assignedSession: profile.admissionSession,
+    studentLoad: 0,
+    maxLoad: 0,
+    status: 'Available',
+    avgAdviseeCgpa: 0,
+    initials: (profile.assignedAdviserName || 'A').split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase(),
+  }] : [];
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured || !profile.admissionSession || !profile.level) return fallback;
+
+  const currentLevel = Number(profile.level.match(/^\d+/)?.[0] || 0);
+  const levels = [100, 200, 300, 400, 500].filter((level) => level <= currentLevel).map((level) => `${level} Level`);
+  const { data: assignments, error: assignmentError } = await client.from('adviser_assignments')
+    .select('adviser_id,level,admission_session,department')
+    .eq('department', profile.department)
+    .eq('admission_session', profile.admissionSession)
+    .in('level', levels);
+  if (assignmentError) throw assignmentError;
+  if (!assignments?.length) return fallback;
+
+  const adviserIds = [...new Set(assignments.map((assignment) => assignment.adviser_id))];
+  const { data: adviserProfiles, error: adviserError } = await client.from('profiles')
+    .select('user_id,full_name,email,department,avatar_url')
+    .in('user_id', adviserIds);
+  if (adviserError) throw adviserError;
+  const byId = new Map((adviserProfiles || []).map((adviser) => [adviser.user_id, adviser]));
+  const advisers = assignments.flatMap((assignment) => {
+    const adviser = byId.get(assignment.adviser_id);
+    if (!adviser) return [];
+    return [{
+      id: adviser.user_id,
+      name: adviser.full_name,
+      title: `Level Adviser, ${adviser.department}`,
+      department: adviser.department,
+      email: adviser.email,
+      avatarUrl: adviser.avatar_url || '',
+      assignedLevel: assignment.level,
+      assignedSession: assignment.admission_session,
+      studentLoad: 0,
+      maxLoad: 0,
+      status: 'Available' as const,
+      avgAdviseeCgpa: 0,
+      initials: adviser.full_name.split(/\s+/).map((part: string) => part[0]).join('').slice(0, 2).toUpperCase(),
+    }];
+  });
+  return advisers.sort((a, b) => Number(b.assignedLevel.match(/^\d+/)?.[0] || 0) - Number(a.assignedLevel.match(/^\d+/)?.[0] || 0));
+}
+
+export async function loadAcademicAnalytics(): Promise<AcademicAnalytics | null> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return null;
+  const { data, error } = await client.rpc('get_academic_analytics');
+  if (error) throw error;
+  return data as AcademicAnalytics;
+}
+
 export async function persistAdviserAssignment(adviserId: string, department: string, admissionSession: string, level: string): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return;
@@ -240,6 +318,7 @@ export async function persistTranscript(
     document_student_name: profile.name,
     courses,
     cgpa,
+    semester_key: getCurrentSemesterKey(),
   });
   if (error) {
     if (filePath) await client.storage.from('result-documents').remove([filePath]);
@@ -247,12 +326,12 @@ export async function persistTranscript(
   }
 }
 
-export async function loadLatestTranscript(userId: string): Promise<{ courses: CourseResult[]; cgpa: number; fileName: string } | null> {
+export async function loadLatestTranscript(userId: string): Promise<{ courses: CourseResult[]; cgpa: number; fileName: string; semesterKey?: string } | null> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return null;
-  const { data, error } = await client.from('student_results').select('courses,cgpa,file_name').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  const { data, error } = await client.from('student_results').select('courses,cgpa,file_name,semester_key').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (error) throw error;
-  return data ? { courses: data.courses as CourseResult[], cgpa: Number(data.cgpa), fileName: String(data.file_name) } : null;
+  return data ? { courses: data.courses as CourseResult[], cgpa: Number(data.cgpa), fileName: String(data.file_name), semesterKey: data.semester_key || undefined } : null;
 }
 
 export async function persistDirectMessage(input: {

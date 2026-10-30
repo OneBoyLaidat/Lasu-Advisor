@@ -13,6 +13,7 @@ import {
   StudentConversation,
   ArchivedChatThread,
   NotificationItem,
+  AcademicAnalytics,
   ThemeMode,
 } from './types';
 import {
@@ -42,8 +43,9 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { AuthView } from './components/AuthView';
 import { SettingsView } from './components/SettingsView';
 import { propagateAdviserAssignmentToStoredAccounts } from './lib/authService';
-import { getCurrentProfile, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistTranscript, persistUserProfile, signOutAccount } from './lib/liveDataService';
+import { getCurrentProfile, loadAcademicAnalytics, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, loadStudentAdvisers, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistResultPromptDismissal, persistTranscript, persistUserProfile, signOutAccount } from './lib/liveDataService';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
+import { getCurrentSemesterKey } from './lib/academicUtils';
 
 // Modal imports
 import { BookAppointmentModal } from './components/BookAppointmentModal';
@@ -60,6 +62,38 @@ interface ToastNotice {
   type: 'success' | 'info' | 'warning';
 }
 
+const EMPTY_STUDENT_STATS: StudentStats = {
+  cgpa: 0,
+  cgpaDelta: 0,
+  currentGpa: 0,
+  projGpa: 0,
+  totalUnits: 0,
+  passedUnits: 0,
+  carryoverUnits: 0,
+  cohortPercentile: 'No result data yet',
+  weeksCompleted: 0,
+  totalWeeks: 0,
+  assessmentsDone: 0,
+  totalAssessments: 0,
+};
+
+const statsFromTranscript = (transcript: { courses: CourseResult[]; cgpa: number }): StudentStats => {
+  const totalUnits = transcript.courses.reduce((sum, course) => sum + Number(course.units || 0), 0);
+  const passedUnits = transcript.courses.filter((course) => course.status === 'Passed').reduce((sum, course) => sum + Number(course.units || 0), 0);
+  const gradePoints = transcript.courses.reduce((sum, course) => sum + Number(course.gpPoints || 0), 0);
+  const currentGpa = totalUnits ? gradePoints / totalUnits : 0;
+  return {
+    ...EMPTY_STUDENT_STATS,
+    cgpa: transcript.cgpa,
+    currentGpa,
+    projGpa: currentGpa,
+    totalUnits,
+    passedUnits,
+    carryoverUnits: Math.max(totalUnits - passedUnits, 0),
+    cohortPercentile: 'Based on uploaded results',
+  };
+};
+
 export function App() {
   // Global State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -67,6 +101,7 @@ export function App() {
   const [userRole, setUserRole] = useState<UserRole>('student');
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const [hasNudgeNotice, setHasNudgeNotice] = useState<boolean>(false);
@@ -116,8 +151,9 @@ export function App() {
 
   // Data states
   const [userProfile, setUserProfile] = useState<UserProfile>(INITIAL_USER_PROFILES.student);
-  const [studentStats, setStudentStats] = useState<StudentStats>(INITIAL_STUDENT_STATS);
-  const [courseResults, setCourseResults] = useState<CourseResult[]>(INITIAL_COURSE_RESULTS);
+  const [studentStats, setStudentStats] = useState<StudentStats>(EMPTY_STUDENT_STATS);
+  const [courseResults, setCourseResults] = useState<CourseResult[]>([]);
+  const [academicAnalytics, setAcademicAnalytics] = useState<AcademicAnalytics | null>(null);
   const [advisers, setAdvisers] = useState<Adviser[]>(ADVISERS_LIST);
   const [advisees, setAdvisees] = useState<Advisee[]>(ADVISEES_LIST);
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(AGENDA_ITEMS);
@@ -129,48 +165,27 @@ export function App() {
   const [staffThreads, setStaffThreads] = useState<Record<string, ChatMessage[]>>({});
   const [staffMessageContacts, setStaffMessageContacts] = useState<Awaited<ReturnType<typeof loadStaffMessageContacts>>>([]);
   const [activeStudentAdviserEmail, setActiveStudentAdviserEmail] = useState('');
+  const [studentAdvisers, setStudentAdvisers] = useState<Adviser[]>([]);
   const [activeStaffContactEmail, setActiveStaffContactEmail] = useState('');
   const [conversations, setConversations] = useState<StudentConversation[]>(INITIAL_CONVERSATIONS);
   const [activeConversationId, setActiveConversationId] = useState<string>('conv_michael');
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([
-    {
-      id: 'n2',
-      title: 'Academic Performance Audit Alert',
-      desc: '3 students flagged for academic performance review in Computer Science.',
-      time: '1h ago',
-      urgent: true,
-      type: 'alert',
-    },
-    {
-      id: 'n3',
-      title: 'Course Registration Deadline',
-      desc: 'Late registration penalty waiver window closes on Nov 15.',
-      time: '4h ago',
-      urgent: false,
-      type: 'deadline',
-    },
-  ]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let active = true;
-    getCurrentProfile().then(async (profile) => {
+    getCurrentProfile().then((profile) => {
       if (!active) return;
       if (profile) {
         setUserProfile(profile);
         setUserRole(profile.role);
         setActiveStudentAdviserEmail('');
         setCurrentTab(profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
+        setCourseResults([]);
+        setStudentStats(EMPTY_STUDENT_STATS);
+        setHasNudgeNotice(false);
         setIsAuthenticated(true);
-        const transcript = await loadLatestTranscript(profile.id);
-        if (active && transcript) {
-          const passedUnits = transcript.courses.filter((course) => course.status === 'Passed').reduce((sum, course) => sum + course.units, 0);
-          const totalUnits = transcript.courses.reduce((sum, course) => sum + course.units, 0);
-          setCourseResults(transcript.courses);
-          setUserProfile((previous) => ({ ...previous, hasUploadedTranscript: true, transcriptFileName: transcript.fileName }));
-          setStudentStats((previous) => ({ ...previous, cgpa: transcript.cgpa, totalUnits, passedUnits, carryoverUnits: totalUnits - passedUnits }));
-        }
       }
     }).catch((error) => {
       console.error('Could not restore Supabase session', error);
@@ -179,6 +194,59 @@ export function App() {
     });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || userRole !== 'student') return;
+    let active = true;
+    if (!isSupabaseConfigured) {
+      const isDemoStudent = userProfile.id === INITIAL_USER_PROFILES.student.id;
+      setCourseResults(isDemoStudent ? INITIAL_COURSE_RESULTS : []);
+      setStudentStats(isDemoStudent ? INITIAL_STUDENT_STATS : EMPTY_STUDENT_STATS);
+      loadStudentAdvisers(userProfile).then((adviserList) => {
+        if (active) {
+          setStudentAdvisers(adviserList);
+          setActiveStudentAdviserEmail(adviserList[0]?.email || '');
+        }
+      });
+      const prompt = !userProfile.hasUploadedTranscript;
+      setHasNudgeNotice(prompt);
+      if (prompt) setIsTranscriptModalOpen(true);
+      return () => { active = false; };
+    }
+
+    setCourseResults([]);
+    setStudentStats(EMPTY_STUDENT_STATS);
+    Promise.all([loadLatestTranscript(userProfile.id), loadStudentAdvisers(userProfile)])
+      .then(([transcript, adviserList]) => {
+        if (!active) return;
+        setCourseResults(transcript?.courses || []);
+        setStudentStats(transcript ? statsFromTranscript(transcript) : EMPTY_STUDENT_STATS);
+        setStudentAdvisers(adviserList);
+        setActiveStudentAdviserEmail(adviserList[0]?.email || '');
+        if (transcript) {
+          setUserProfile((previous) => ({ ...previous, hasUploadedTranscript: true, transcriptFileName: transcript.fileName }));
+        }
+        const needsCurrentResult = transcript?.semesterKey !== getCurrentSemesterKey()
+          && userProfile.resultPromptDismissedSemester !== getCurrentSemesterKey();
+        setHasNudgeNotice(needsCurrentResult);
+        if (needsCurrentResult) setIsTranscriptModalOpen(true);
+      })
+      .catch((error) => console.error('Could not load the student academic profile', error));
+    return () => { active = false; };
+  }, [isAuthenticated, userProfile.id, userRole]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !['lecturer', 'hod', 'dean'].includes(userRole) || !isSupabaseConfigured) {
+      setAcademicAnalytics(null);
+      return;
+    }
+    let active = true;
+    setAcademicAnalytics(null);
+    loadAcademicAnalytics()
+      .then((analytics) => { if (active) setAcademicAnalytics(analytics); })
+      .catch((error) => console.error('Could not load authorized academic analytics', error));
+    return () => { active = false; };
+  }, [isAuthenticated, userProfile.id, userRole]);
 
   useEffect(() => {
     if (isAuthenticated && isSupabaseConfigured) {
@@ -309,7 +377,7 @@ export function App() {
     if (role === 'dean') {
       return ['messages', 'executive', 'analytics', 'settings'].includes(tab);
     }
-    return true;
+    return role === 'admin' && ['dashboard', 'messages', 'departmental', 'executive', 'analytics', 'settings'].includes(tab);
   };
 
   // Sync profile & enforce RBAC when role changes
@@ -526,7 +594,7 @@ export function App() {
     const replyMsg: ChatMessage = {
       id: `msg_reply_${Date.now()}`,
       sender: 'adviser',
-      senderName: userProfile.name || 'Dr. Sarah Jenkins',
+      senderName: userProfile.name,
       senderRole: 'Level Adviser',
       text: replyText,
       timestamp: 'Just now',
@@ -669,8 +737,8 @@ export function App() {
       userProfile.department === targetAdv.department && userProfile.admissionSession === session && userProfile.level === level;
 
     if (isMatchingStudent && userProfile.assignedAdviserId !== targetAdv.id) {
-      const prevAdviserName = userProfile.assignedAdviserName || 'Dr. Sarah Jenkins';
-      const prevAdviserId = userProfile.assignedAdviserId || 'adv_sarah';
+      const prevAdviserName = userProfile.assignedAdviserName || 'Former level adviser';
+      const prevAdviserId = userProfile.assignedAdviserId || '';
 
       // Create archive record if there are previous messages
       if (chatMessages.length > 0) {
@@ -725,8 +793,8 @@ export function App() {
         if (c.department === targetAdv.department && matchesSession && matchesLevel) {
           const archiveThread: ArchivedChatThread = {
             id: `arch_conv_${Date.now()}_${c.id}`,
-            adviserId: c.currentAdviserId || 'adv_sarah',
-            adviserName: c.currentAdviserName || 'Dr. Sarah Jenkins',
+            adviserId: c.currentAdviserId || '',
+            adviserName: c.currentAdviserName || 'Former level adviser',
             archivedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
             cohortLevel: `${c.level} (${session})`,
             reason: notes || 'Administrative adviser reallocation',
@@ -761,7 +829,19 @@ export function App() {
     );
   };
 
-  // OCR Transcript Parsed handler: Populates student results and synchronizes with Adviser roster!
+  const handleDismissResultPrompt = async () => {
+    const semesterKey = getCurrentSemesterKey();
+    try {
+      await persistResultPromptDismissal(userProfile.id, semesterKey);
+      setUserProfile((previous) => ({ ...previous, resultPromptDismissedSemester: semesterKey }));
+      setHasNudgeNotice(false);
+      setIsTranscriptModalOpen(false);
+    } catch (error) {
+      showToast('Could not save this choice', error instanceof Error ? error.message : 'Please try again.', 'warning');
+    }
+  };
+
+  // OCR Transcript Parsed handler: persists the verified result and refreshes the logged-in student's view.
   const handleTranscriptParsed = async (
     courses: CourseResult[],
     newCgpa: number,
@@ -773,21 +853,23 @@ export function App() {
   ) => {
     await persistTranscript(userProfile, courses, newCgpa, fileName, uploadedFile);
     // 1. Update Student's courses & stats
-    if (courses.length > 0) {
-      setCourseResults(courses);
-    }
-    setStudentStats((prev) => ({
-      ...prev,
+    setCourseResults(courses);
+    setStudentStats(() => ({
+      ...EMPTY_STUDENT_STATS,
       cgpa: newCgpa,
+      currentGpa: totalUnits ? courses.reduce((sum, course) => sum + Number(course.gpPoints || 0), 0) / totalUnits : 0,
+      projGpa: totalUnits ? courses.reduce((sum, course) => sum + Number(course.gpPoints || 0), 0) / totalUnits : 0,
       totalUnits: totalUnits,
       passedUnits: passedUnits,
       carryoverUnits: carryoverUnits,
+      cohortPercentile: 'Based on uploaded results',
     }));
 
     // 2. Update Student Profile
     setUserProfile((prev) => ({
       ...prev,
       hasUploadedTranscript: true,
+      resultPromptDismissedSemester: getCurrentSemesterKey(),
       transcriptUploadDate: 'Today',
       transcriptFileName: fileName,
     }));
@@ -795,9 +877,9 @@ export function App() {
     setNotifications((prev) => prev.filter((notification) => notification.type !== 'nudge' && notification.title !== 'Result Verification Required'));
 
     // 3. Update Advisee record in Adviser Roster so Adviser sees immediate compliance!
-    setAdvisees((prev) =>
+    if (!isSupabaseConfigured) setAdvisees((prev) =>
       prev.map((a) =>
-        a.id === 'advisee_1' || a.matricNo === userProfile.matricNo
+        a.matricNo === userProfile.matricNo
           ? {
               ...a,
               hasUploadedResult: true,
@@ -813,6 +895,7 @@ export function App() {
 
     // 4. Remove active nudge notice
     setHasNudgeNotice(false);
+    setIsTranscriptModalOpen(false);
 
     // 5. Add notification
     const ocrAlert: NotificationItem = {
@@ -843,11 +926,15 @@ export function App() {
         onLoginSuccess={(profile) => {
           setUserProfile(profile);
           setUserRole(profile.role);
+          setCourseResults([]);
+          setStudentStats(EMPTY_STUDENT_STATS);
+          setStudentAdvisers([]);
+          setNotifications([]);
           setStudentThreads(!isSupabaseConfigured && profile.id === INITIAL_USER_PROFILES.student.id ? { 's.jenkins@lasu.edu.ng': INITIAL_CHAT_MESSAGES } : {});
           setStaffThreads({});
           setActiveStaffContactEmail('');
           setActiveStudentAdviserEmail('');
-          setHasNudgeNotice(!profile.hasUploadedTranscript);
+          setHasNudgeNotice(false);
           if (profile.role === 'student' || profile.role === 'lecturer') {
             setCurrentTab('dashboard');
           } else if (profile.role === 'hod') {
@@ -872,23 +959,7 @@ export function App() {
   const advisorCohortConversations = userRole === 'lecturer'
     ? (isSupabaseConfigured ? conversations : assignedAdviser?.assignedSession ? departmentConversations.filter((c) => c.admissionSession === assignedAdviser.assignedSession && c.level === assignedAdviser.assignedLevel) : [])
     : departmentConversations;
-  const matchedStudentAdviser = advisers.find((adviser) => adviser.email === userProfile.assignedAdviserEmail);
-  const studentAdvisers = userProfile.assignedAdviserEmail
-    ? [matchedStudentAdviser || {
-        id: userProfile.assignedAdviserId || userProfile.assignedAdviserEmail,
-        name: userProfile.assignedAdviserName || 'Assigned Level Adviser',
-        title: userProfile.assignedAdviserTitle || 'Level Adviser',
-        department: userProfile.department,
-        email: userProfile.assignedAdviserEmail,
-        avatarUrl: userProfile.assignedAdviserAvatar || '',
-        assignedLevel: userProfile.level || '',
-        studentLoad: 0,
-        maxLoad: 0,
-        status: 'Available' as const,
-        avgAdviseeCgpa: 0,
-        initials: (userProfile.assignedAdviserName || 'A').slice(0, 2).toUpperCase(),
-      }]
-    : [];
+  const currentStudentAdviser = studentAdvisers[0];
 
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col antialiased selection:bg-emerald-600 selection:text-white transition-colors duration-200">
@@ -931,8 +1002,11 @@ export function App() {
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
         userRole={userRole}
+        userProfile={userProfile}
         isOpenMobile={isMobileNavOpen}
         setIsOpenMobile={setIsMobileNavOpen}
+        isExpanded={isSidebarExpanded}
+        onHoverChange={setIsSidebarExpanded}
         unreadMessagesCount={userRole === 'student'
           ? Object.values(studentThreads).reduce((count, thread) => count + thread.filter((message) => message.sender === 'adviser' && !message.isRead).length, 0)
           : userRole === 'lecturer'
@@ -955,10 +1029,11 @@ export function App() {
         onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
         isDark={isDark}
         onToggleDark={handleToggleDark}
+        sidebarExpanded={isSidebarExpanded}
       />
 
       {/* Main Workspace Body */}
-      <main className={`min-w-0 w-full md:w-[calc(100%-15rem)] md:ml-60 pt-20 sm:pt-24 ${currentTab === 'messages' ? 'pb-0' : 'pb-16'} ${currentTab === 'messages' || currentTab === 'settings' ? 'px-0 max-w-none' : 'px-3 sm:px-6 md:px-10 max-w-7xl mx-auto'} flex-1`}>
+      <main className={`min-w-0 w-full ${isSidebarExpanded ? 'md:w-[calc(100%-15rem)] md:ml-60' : 'md:w-[calc(100%-5rem)] md:ml-20'} pt-20 sm:pt-24 ${currentTab === 'messages' ? 'pb-0' : 'pb-16'} ${currentTab === 'messages' || currentTab === 'settings' ? 'px-0 max-w-none' : 'px-3 sm:px-6 md:px-10 max-w-7xl mx-auto'} flex-1 transition-[width,margin] duration-200`}>
         {/* Strict RBAC Access Guard */}
         {!canAccessCurrentTab ? (
           <div className="py-16 text-center space-y-4 max-w-md mx-auto">
@@ -987,10 +1062,15 @@ export function App() {
                     studentProfile={userProfile}
                     stats={studentStats}
                     courseResults={courseResults}
-                    onOpenAdvisorChat={() => setCurrentTab('messages')}
+                    assignedAdviser={currentStudentAdviser}
+                    onOpenAdvisorChat={() => {
+                      if (currentStudentAdviser) setActiveStudentAdviserEmail(currentStudentAdviser.email);
+                      setCurrentTab('messages');
+                    }}
                     onOpenBookAppointment={() => setIsBookAppointmentOpen(true)}
                     onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
                     hasNudgeNotice={hasNudgeNotice}
+                    onDismissResultPrompt={handleDismissResultPrompt}
                   />
                 ) : userRole === 'lecturer' ? (
                   <LecturerDashboard
@@ -1156,7 +1236,7 @@ export function App() {
             )}
 
             {/* Tab: Analytics */}
-            {currentTab === 'analytics' && <AnalyticsView userRole={userRole} />}
+            {currentTab === 'analytics' && <AnalyticsView userRole={userRole} studentStats={studentStats} studentProfile={userProfile} academicAnalytics={academicAnalytics} />}
 
             {/* Tab: Settings */}
             {currentTab === 'settings' && (
@@ -1179,6 +1259,8 @@ export function App() {
         onClose={() => setIsBookAppointmentOpen(false)}
         onConfirmBooking={handleConfirmBooking}
         studentName={userProfile.name}
+        studentId={userProfile.id}
+        adviserName={currentStudentAdviser?.name || 'Not assigned'}
       />
 
       <InterventionModal
@@ -1213,6 +1295,7 @@ export function App() {
       <TranscriptParserModal
         isOpen={isTranscriptModalOpen}
         onClose={() => setIsTranscriptModalOpen(false)}
+        onDismissPrompt={userRole === 'student' ? handleDismissResultPrompt : undefined}
         expectedStudentName={userProfile.name}
         onTranscriptParsed={handleTranscriptParsed}
       />
