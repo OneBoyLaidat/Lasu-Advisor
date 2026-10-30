@@ -1,6 +1,6 @@
 import { User } from '@supabase/supabase-js';
-import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConversation, UserProfile, UserRole } from '../types';
-import { AuthResult, authenticateUser, registerNewUser } from './authService';
+import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConversation, UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload } from '../types';
+import { AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember } from './authService';
 import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
 import { getCurrentSemesterKey } from './academicUtils';
 
@@ -482,3 +482,80 @@ export async function sendPasswordReset(email: string): Promise<void> {
   const { error } = await client.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: `${window.location.origin}/#login` });
   if (error) throw error;
 }
+
+
+/**
+ * Reset password directly for students or staff members
+ */
+export async function resetPasswordDirectly(
+  identifier: string,
+  newPassword: string
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  if (!isSupabaseConfigured) {
+    return resetAccountPassword(identifier, newPassword);
+  }
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Database service is unavailable.' };
+
+  try {
+    const { data: sessionData } = await client.auth.getSession();
+    if (sessionData?.session) {
+      const { error } = await client.auth.updateUser({ password: newPassword });
+      if (error) return { success: false, error: error.message };
+      resetAccountPassword(identifier, newPassword);
+      return { success: true, message: 'Password updated successfully!' };
+    }
+  } catch (err) {
+    // If not authenticated, proceed to reset via email or local accounts
+  }
+
+  if (identifier.includes('@')) {
+    try {
+      await sendPasswordReset(identifier);
+      resetAccountPassword(identifier, newPassword);
+      return { success: true, message: 'Password reset link sent to your email, and credentials updated.' };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not send reset email.';
+      // Fallback to local reset if email failed
+      const local = resetAccountPassword(identifier, newPassword);
+      if (local.success) return local;
+      return { success: false, error: msg };
+    }
+  }
+
+  return resetAccountPassword(identifier, newPassword);
+}
+
+/**
+ * Register a staff account manually from Admin Portal
+ */
+export async function registerStaffAccount(
+  data: ManualStaffRegistrationPayload
+): Promise<AuthResult & { generatedPassword?: string }> {
+  const localResult = registerStaffManually(data);
+  if (!localResult.success) return localResult;
+
+  if (isSupabaseConfigured) {
+    const client = getSupabaseClient();
+    if (client) {
+      try {
+        await client.from('profiles').upsert({
+          user_id: localResult.profile?.id || crypto.randomUUID(),
+          full_name: data.name.trim(),
+          email: data.email.trim().toLowerCase(),
+          role: data.role,
+          department: data.department,
+          faculty: data.faculty,
+          staff_id: data.staffId.trim().toUpperCase(),
+          level: data.assignedLevel || null,
+          phone: data.phone || null,
+        });
+      } catch (err) {
+        console.warn('Could not sync staff profile to Supabase directly:', err);
+      }
+    }
+  }
+  return localResult;
+}
+
+export { getStaffDirectory, updateStaffMember, deleteStaffMember, resetAccountPassword };

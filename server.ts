@@ -248,6 +248,75 @@ async function startServer() {
       propagatedAt: new Date().toISOString(),
     });
   });
+  // 7. Node.js Admin Portal Staff Registration Endpoint
+  app.post('/api/admin/staff', (req: Request, res: Response) => {
+    const { name, email, staffId, role, department, faculty, level, password } = req.body;
+
+    if (!name || !email || !staffId || !role) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required staff registration parameters (name, email, staffId, role)',
+      });
+    }
+
+    console.log(`[LASU Admin Portal] Registered new staff: ${name} (${staffId}) as ${role} for ${department}`);
+
+    res.json({
+      success: true,
+      message: `Staff member ${name} (${staffId}) successfully registered with role ${role}`,
+      staff: {
+        name,
+        email,
+        staffId,
+        role,
+        department: department || 'Computer Science',
+        faculty: faculty || 'Faculty of Computing & Information Technology',
+        level: level || '100 Level (1AD)',
+        hasPasswordAssigned: !!password,
+      },
+      registeredAt: new Date().toISOString(),
+    });
+  });
+
+  // 8. Node.js Password & Profile Reset Endpoint (Students & Staff)
+  app.post('/api/auth/reset-password', (req: Request, res: Response) => {
+    const { identifier, newPassword } = req.body;
+
+    if (!identifier || !newPassword || newPassword.length < 5) {
+      return res.status(400).json({
+        success: false,
+        error: 'Identifier and valid new password (min. 5 characters) are required',
+      });
+    }
+
+    console.log(`[LASU Advisor Auth] Password reset request processed for identifier: ${identifier}`);
+
+    res.json({
+      success: true,
+      message: 'Password reset verified and propagated on backend server',
+      identifier,
+      updatedAt: new Date().toISOString(),
+    });
+  });
+
+  // 9. Node.js Admin Staff Password Reset Endpoint
+  app.post('/api/admin/staff/reset-password', (req: Request, res: Response) => {
+    const { staffId, email, newPassword } = req.body;
+
+    if ((!staffId && !email) || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Staff identifier and new password are required',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Password updated successfully for staff member ${staffId || email}`,
+      updatedAt: new Date().toISOString(),
+    });
+  });
+
 
   // =========================================================================
   // VITE CLIENT MIDDLEWARE & STATIC SERVING

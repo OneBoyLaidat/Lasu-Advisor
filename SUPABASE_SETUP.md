@@ -29,7 +29,7 @@ Restart the dev server after editing `.env`. Local development falls back to dem
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, then `202610300002_student_semester_results_and_advisers.sql`. The first creates the tables, triggers, indexes, policies, and private Storage bucket `result-documents`; the second repairs profiles for student accounts registered before the Auth trigger was installed; the third enables semester-based result prompts and current/past adviser messaging.
+Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, then `202610300003_admin_staff_management.sql`. The first creates the tables, triggers, indexes, policies, and private Storage bucket `result-documents`; the second repairs profiles for student accounts registered before the Auth trigger was installed; the third enables semester-based result prompts and current/past adviser messaging; the fourth enables centralized Admin Portal staff management and 1AD adviser mapping.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|

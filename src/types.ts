@@ -242,3 +242,34 @@ export interface NotificationItem {
   urgent: boolean;
   type: 'nudge' | 'alert' | 'system' | 'deadline';
 }
+
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  email: string;
+  staffId: string;
+  role: 'lecturer' | 'hod' | 'dean';
+  department: string;
+  faculty: string;
+  assignedLevel?: string;
+  assignedSession?: string;
+  phone?: string;
+  avatarUrl?: string;
+  status: 'Active' | 'On Leave' | 'Pending Activation';
+  adviseeCount?: number;
+  dateRegistered: string;
+}
+
+export interface ManualStaffRegistrationPayload {
+  name: string;
+  email: string;
+  staffId: string;
+  role: 'lecturer' | 'hod' | 'dean';
+  department: string;
+  faculty: string;
+  assignedLevel?: string;
+  assignedSession?: string;
+  phone?: string;
+  password?: string;
+}

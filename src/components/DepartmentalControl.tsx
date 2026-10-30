@@ -7,6 +7,7 @@ interface DepartmentalControlProps {
   courseRates: CourseSuccessRate[];
   onOpenAssignAdvisorModal: (adviser?: Adviser) => void;
   onOpenExportReportModal: () => void;
+  onOpenAdminPortal?: () => void;
 }
 
 export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
@@ -15,6 +16,7 @@ export const DepartmentalControl: React.FC<DepartmentalControlProps> = ({
   courseRates,
   onOpenAssignAdvisorModal,
   onOpenExportReportModal,
+  onOpenAdminPortal,
 }) => {
   const [sessionSearch, setSessionSearch] = useState<string>('All');
   const [adviserSearch, setAdviserSearch] = useState<string>('');

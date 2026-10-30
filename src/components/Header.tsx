@@ -14,6 +14,7 @@ interface HeaderProps {
   notifications: NotificationItem[];
   onClearNotifications: () => void;
   onOpenTranscriptModal?: () => void;
+  onOpenAdminPortal?: () => void;
   isDark?: boolean;
   onToggleDark?: () => void;
   sidebarExpanded?: boolean;
@@ -30,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
   notifications,
   onClearNotifications,
   onOpenTranscriptModal,
+  onOpenAdminPortal,
   isDark,
   onToggleDark,
   sidebarExpanded = false,
@@ -90,7 +92,24 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         )}
 
-        {/* Action icons */}
+        
+        {/* Dedicated Admin Portal button for authorized personnel (HOD, Team, Lecturers, Deans) */}
+        {(userRole === 'hod' || userRole === 'lecturer' || userRole === 'dean' || userRole === 'admin') && onOpenAdminPortal && (
+          <button
+            type="button"
+            id="header-admin-portal-btn"
+            onClick={onOpenAdminPortal}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700/80 shadow-2xs transition-all cursor-pointer"
+            title="Access HOD, Lecturer & Administrative Staff Portal"
+          >
+            <span className="material-symbols-outlined text-[17px] text-emerald-600 dark:text-emerald-400">
+              admin_panel_settings
+            </span>
+            <span className="hidden sm:inline">Admin Portal</span>
+          </button>
+        )}
+
+{/* Action icons */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 border-l border-slate-200 dark:border-slate-800 pl-2 sm:pl-4 relative">
           {/* Dark Mode Toggle Button */}
           {onToggleDark && (
@@ -244,6 +263,21 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
 
                 <div className="py-2 flex flex-col gap-1 text-xs text-slate-700 dark:text-slate-300">
+                  {(userRole === 'hod' || userRole === 'lecturer' || userRole === 'dean' || userRole === 'admin') && onOpenAdminPortal && (
+                    <button
+                      onClick={() => {
+                        onOpenAdminPortal();
+                        setShowUserMenu(false);
+                      }}
+                      className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-300 text-left transition-colors font-semibold"
+                    >
+                      <span className="material-symbols-outlined text-[18px] text-emerald-600 dark:text-emerald-400">
+                        admin_panel_settings
+                      </span>
+                      Admin Portal
+                    </button>
+                  )}
+
                   <button
                     onClick={() => {
                       onOpenSettings();

@@ -42,6 +42,7 @@ import { ExecutiveOverview } from './components/ExecutiveOverview';
 import { AnalyticsView } from './components/AnalyticsView';
 import { AuthView } from './components/AuthView';
 import { SettingsView } from './components/SettingsView';
+import { AdminPortalView } from './components/AdminPortalView';
 import { propagateAdviserAssignmentToStoredAccounts } from './lib/authService';
 import { getCurrentProfile, loadAcademicAnalytics, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, loadStudentAdvisers, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistResultPromptDismissal, persistTranscript, persistUserProfile, signOutAccount } from './lib/liveDataService';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
@@ -369,13 +370,13 @@ export function App() {
       return ['dashboard', 'messages', 'analytics', 'settings'].includes(tab);
     }
     if (role === 'lecturer') {
-      return ['dashboard', 'messages', 'advising', 'analytics', 'settings'].includes(tab);
+      return ['dashboard', 'messages', 'advising', 'analytics', 'settings', 'admin'].includes(tab);
     }
     if (role === 'hod') {
-      return ['messages', 'departmental', 'analytics', 'settings'].includes(tab);
+      return ['messages', 'departmental', 'analytics', 'settings', 'admin'].includes(tab);
     }
     if (role === 'dean') {
-      return ['messages', 'executive', 'analytics', 'settings'].includes(tab);
+      return ['messages', 'executive', 'analytics', 'settings', 'admin'].includes(tab);
     }
     return role === 'admin' && ['dashboard', 'messages', 'departmental', 'executive', 'analytics', 'settings'].includes(tab);
   };
@@ -1027,13 +1028,14 @@ export function App() {
         notifications={notifications}
         onClearNotifications={() => setNotifications([])}
         onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
+        onOpenAdminPortal={() => setCurrentTab('admin')}
         isDark={isDark}
         onToggleDark={handleToggleDark}
         sidebarExpanded={isSidebarExpanded}
       />
 
       {/* Main Workspace Body */}
-      <main className={`min-w-0 w-full ${isSidebarExpanded ? 'md:w-[calc(100%-15rem)] md:ml-60' : 'md:w-[calc(100%-5rem)] md:ml-20'} pt-20 sm:pt-24 ${currentTab === 'messages' ? 'pb-0' : 'pb-16'} ${currentTab === 'messages' || currentTab === 'settings' ? 'px-0 max-w-none' : 'px-3 sm:px-6 md:px-10 max-w-7xl mx-auto'} flex-1 transition-[width,margin] duration-200`}>
+      <main className={`min-w-0 w-full ${isSidebarExpanded ? 'md:w-[calc(100%-15rem)] md:ml-60' : 'md:w-[calc(100%-5rem)] md:ml-20'} pt-20 sm:pt-24 ${currentTab === 'messages' ? 'pb-0' : 'pb-16'} ${currentTab === 'messages' ? 'px-0 max-w-none' : 'px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto'} flex-1 transition-[width,margin] duration-200`}>
         {/* Strict RBAC Access Guard */}
         {!canAccessCurrentTab ? (
           <div className="py-16 text-center space-y-4 max-w-md mx-auto">
@@ -1121,6 +1123,7 @@ export function App() {
                       setIsAssignAdvisorOpen(true);
                     }}
                     onOpenExportReportModal={() => setIsExportReportOpen(true)}
+                onOpenAdminPortal={() => setCurrentTab('admin')}
                   />
                 ) : (
                   <ExecutiveOverview
@@ -1239,6 +1242,16 @@ export function App() {
             {currentTab === 'analytics' && <AnalyticsView userRole={userRole} studentStats={studentStats} studentProfile={userProfile} academicAnalytics={academicAnalytics} />}
 
             {/* Tab: Settings */}
+            
+            {/* Tab: Admin Portal (HOD, Team, Lecturers, Dean) */}
+            {currentTab === 'admin' && (userRole === 'hod' || userRole === 'lecturer' || userRole === 'dean' || userRole === 'admin') && (
+              <AdminPortalView
+                userProfile={userProfile}
+                userRole={userRole}
+                onNavigateToTab={(tab) => setCurrentTab(tab)}
+              />
+            )}
+
             {currentTab === 'settings' && (
               <SettingsView
                 userProfile={userProfile}

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { OFFICIAL_LOGO_URL } from '../data/mockData';
 import { UserProfile, LASU_DEPARTMENTS, EntryMode } from '../types';
 import { getRegisteredAccounts } from '../lib/authService';
-import { resendSignupConfirmation, sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';
+import { resendSignupConfirmation, resetPasswordDirectly, sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   computeAcademicLevel,
@@ -91,6 +91,16 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [showDemoCredentials, setShowDemoCredentials] = useState<boolean>(false);
 
+  // Independent Reset Password Modal state for Students & Staff
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
+  const [resetAccountType, setResetAccountType] = useState<'student' | 'staff'>('student');
+  const [resetIdentifier, setResetIdentifier] = useState<string>('');
+  const [resetNewPassword, setResetNewPassword] = useState<string>('');
+  const [resetConfirmPassword, setResetConfirmPassword] = useState<string>('');
+  const [resetModalError, setResetModalError] = useState<string | null>(null);
+  const [resetModalSuccess, setResetModalSuccess] = useState<string | null>(null);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+
   // Auto-recalculate Academic Level whenever entryMode or admissionSession updates
   useEffect(() => {
     const computed = computeAcademicLevel(admissionSession, entryMode);
@@ -119,6 +129,54 @@ export const AuthView: React.FC<AuthViewProps> = ({
       setSuccessMessage(`A new confirmation link has been sent to ${confirmationEmail}.`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetModalError(null);
+    setResetModalSuccess(null);
+
+    const cleanTargetId = resetIdentifier.trim();
+    if (!cleanTargetId) {
+      setResetModalError(
+        resetAccountType === 'student'
+          ? 'Please enter your Matriculation Number or student email address.'
+          : 'Please enter your Staff ID or staff email address.'
+      );
+      return;
+    }
+
+    if (!resetNewPassword || resetNewPassword.length < 5) {
+      setResetModalError('Password must contain at least 5 characters.');
+      return;
+    }
+
+    if (resetNewPassword !== resetConfirmPassword) {
+      setResetModalError('Passwords do not match. Please ensure both passwords are identical.');
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const res = await resetPasswordDirectly(cleanTargetId, resetNewPassword);
+      if (!res.success) {
+        setResetModalError(res.error || 'Failed to reset password. Please check your details.');
+      } else {
+        setResetModalSuccess(res.message || 'Password successfully reset!');
+        setIdentifier(cleanTargetId);
+        setPassword(resetNewPassword);
+        setTimeout(() => {
+          setShowResetModal(false);
+          setSuccessMessage('Password reset successfully. You may now sign in with your new password.');
+          setResetNewPassword('');
+          setResetConfirmPassword('');
+        }, 1200);
+      }
+    } catch (err: unknown) {
+      setResetModalError(err instanceof Error ? err.message : 'An error occurred while resetting password.');
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -373,23 +431,21 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
                   Password
                 </label>
-                <a
-                  href="#forgot"
-                  onClick={async (e) => {
-                    e.preventDefault();
+                <button
+                  type="button"
+                  id="forgot-password-link"
+                  onClick={() => {
                     setErrorMessage(null);
                     setSuccessMessage(null);
-                    try {
-                      await sendPasswordReset(identifier);
-                      setSuccessMessage('If an account exists for this email, password recovery instructions have been sent.');
-                    } catch (error) {
-                      setErrorMessage(error instanceof Error ? error.message : 'Could not start password recovery.');
-                    }
+                    setResetModalError(null);
+                    setResetModalSuccess(null);
+                    setResetIdentifier(identifier);
+                    setShowResetModal(true);
                   }}
-                  className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline"
+                  className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline cursor-pointer bg-transparent border-0 p-0"
                 >
-                  Forgot password?
-                </a>
+                  Reset / Forgot password?
+                </button>
               </div>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[18px]">
@@ -510,6 +566,24 @@ export const AuthView: React.FC<AuthViewProps> = ({
       {/* ========================================================================= */}
       {currentPage === 'register-select' && (
         <div className="w-full max-w-xl bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
+          {/* Breadcrumb Navigation: Back to Login */}
+          <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800 text-xs">
+            <a
+              href="#login"
+              id="back-to-login-from-select"
+              onClick={(e) => {
+                e.preventDefault();
+                navigateTo('login');
+              }}
+              className="text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
+            >
+              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+              Back to Login
+            </a>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+              Account Setup
+            </span>
+          </div>
           {/* Header */}
           <div className="flex flex-col items-center text-center mb-6">
             <div className="w-14 h-14 rounded-full overflow-hidden mb-3 border border-slate-200 dark:border-slate-800 shadow-sm bg-slate-50 dark:bg-slate-800 p-1 flex items-center justify-center">
@@ -618,15 +692,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
           {/* Breadcrumb Navigation */}
           <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800 text-xs">
             <a
-              href="#register"
-              onClick={(e) => {
-                e.preventDefault();
-                navigateTo('register-select');
-              }}
-              className="text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium inline-flex items-center gap-1"
+              href="#login" onClick={(e) => { e.preventDefault(); navigateTo('login'); }} className="text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
             >
-              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-              Back to Portal Selection
+              <span className="material-symbols-outlined text-[16px]">arrow_back</span>Back to Login
             </a>
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
               Student Registration
@@ -963,15 +1031,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
           {/* Breadcrumb Navigation */}
           <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800 text-xs">
             <a
-              href="#register"
-              onClick={(e) => {
-                e.preventDefault();
-                navigateTo('register-select');
-              }}
-              className="text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-medium inline-flex items-center gap-1"
+              href="#login" onClick={(e) => { e.preventDefault(); navigateTo('login'); }} className="text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
             >
-              <span className="material-symbols-outlined text-[16px]">arrow_back</span>
-              Back to Portal Selection
+              <span className="material-symbols-outlined text-[16px]">arrow_back</span>Back to Login
             </a>
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
               Staff Registration
@@ -1179,6 +1241,148 @@ export const AuthView: React.FC<AuthViewProps> = ({
           </div>
         </div>
       )}
+    
+      {/* ========================================================================= */}
+      {/* RESET PASSWORD / PASSPORT RECOVERY MODAL (STUDENTS & STAFF)               */}
+      {/* ========================================================================= */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl relative">
+            <button
+              type="button"
+              onClick={() => setShowResetModal(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-full cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[20px]">close</span>
+            </button>
+
+            <form onSubmit={handleResetPasswordSubmit} className="space-y-4 text-xs">
+              <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 flex items-center justify-center border border-emerald-200 dark:border-emerald-800 shrink-0">
+                  <span className="material-symbols-outlined text-[22px]">lock_reset</span>
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                    Reset Password
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Recover your credentials for Student or Academic Staff account.
+                  </p>
+                </div>
+              </div>
+
+              {/* Account Type Toggle */}
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                  Account Category
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setResetAccountType('student')}
+                    className={`py-2 px-3 rounded-lg border text-center transition-all cursor-pointer font-semibold ${
+                      resetAccountType === 'student'
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    Student Account
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResetAccountType('staff')}
+                    className={`py-2 px-3 rounded-lg border text-center transition-all cursor-pointer font-semibold ${
+                      resetAccountType === 'staff'
+                        ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                    }`}
+                  >
+                    Academic Staff
+                  </button>
+                </div>
+              </div>
+
+              {resetModalError && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs">
+                  {resetModalError}
+                </div>
+              )}
+
+              {resetModalSuccess && (
+                <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                  <span>{resetModalSuccess}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {resetAccountType === 'student' ? 'Student Email or Matric Number' : 'Staff Email or Staff ID'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder={resetAccountType === 'student' ? 'e.g. m.adebayo@lasu.edu.ng or CSC/21/0045' : 'e.g. s.jenkins@lasu.edu.ng or STAFF/CSC/088'}
+                  value={resetIdentifier}
+                  onChange={(e) => setResetIdentifier(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    New Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Min. 5 characters"
+                    value={resetNewPassword}
+                    onChange={(e) => setResetNewPassword(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    placeholder="Confirm password"
+                    value={resetConfirmPassword}
+                    onChange={(e) => setResetConfirmPassword(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowResetModal(false)}
+                  className="flex-1 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isResetting}
+                  className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {isResetting ? (
+                    <span className="material-symbols-outlined animate-spin text-[16px]">sync</span>
+                  ) : (
+                    <span>Reset Password</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

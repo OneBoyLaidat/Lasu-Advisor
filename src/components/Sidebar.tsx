@@ -54,6 +54,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       roles: ['dean'],
     },
     {
+      id: 'admin',
+      label: 'Admin Portal',
+      icon: 'shield_person',
+      roles: ['hod', 'lecturer', 'dean', 'admin'],
+    },
+
+    {
       id: 'analytics',
       label: 'Analytics & Projections',
       icon: 'analytics',

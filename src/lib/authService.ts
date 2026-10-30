@@ -1,4 +1,4 @@
-import { UserProfile, UserRole, EntryMode } from '../types';
+import { UserProfile, UserRole, EntryMode, StaffMember, ManualStaffRegistrationPayload } from '../types';
 import { getStudentCohortSession } from './academicUtils';
 import {
   STUDENT_AVATAR,
@@ -443,4 +443,245 @@ export function registerNewUser(data: {
     success: true,
     profile,
   };
+}
+
+
+/**
+ * Manually register academic staff (Lecturers, HODs, Deans) from the Admin Portal.
+ * Automatically saves the staff credentials so they can log in immediately.
+ */
+export function registerStaffManually(data: ManualStaffRegistrationPayload): AuthResult & { generatedPassword?: string } {
+  const cleanEmail = data.email.trim().toLowerCase();
+  const cleanName = data.name.trim();
+  const cleanStaffId = data.staffId.trim().toUpperCase();
+  const assignedPass = (data.password && data.password.trim().length >= 4)
+    ? data.password.trim()
+    : `LasuStaff${Math.floor(1000 + Math.random() * 9000)}!`;
+
+  if (!cleanName || cleanName.length < 2) {
+    return { success: false, error: 'Please enter a valid staff full name.' };
+  }
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    return { success: false, error: 'Please enter a valid institutional email address.' };
+  }
+
+  if (!cleanStaffId) {
+    return { success: false, error: 'Staff ID is required.' };
+  }
+
+  const accounts = getRegisteredAccounts();
+
+  // Check duplicates
+  const exists = accounts.some(
+    (acc) =>
+      acc.email.toLowerCase() === cleanEmail ||
+      (acc.staffId && acc.staffId.toUpperCase() === cleanStaffId)
+  );
+
+  if (exists) {
+    return {
+      success: false,
+      error: `A staff member or account with this Email (${cleanEmail}) or Staff ID (${cleanStaffId}) already exists.`,
+    };
+  }
+
+  const avatar = data.role === 'dean'
+    ? DEAN_AVATAR
+    : data.role === 'hod'
+    ? LECTURER_AVATAR
+    : ADVISER_AVATAR;
+
+  const newStaffAccount: RegisteredAccount = {
+    id: `usr_staff_${Date.now()}`,
+    name: cleanName,
+    email: cleanEmail,
+    password: assignedPass,
+    role: data.role,
+    department: data.department || 'Computer Science',
+    faculty: data.faculty || 'Faculty of Computing & Information Technology',
+    staffId: cleanStaffId,
+    level: data.assignedLevel,
+    session: data.assignedSession || '2026/2027',
+    phone: data.phone || '+234 800 000 0000',
+    avatarUrl: avatar,
+    assignedAdviserTitle: data.role === 'hod'
+      ? `Head of Department, ${data.department}`
+      : data.role === 'dean'
+      ? `Dean, ${data.faculty}`
+      : `Level Adviser (${data.assignedLevel || 'All Levels'}), ${data.department}`,
+  };
+
+  accounts.unshift(newStaffAccount);
+  saveRegisteredAccounts(accounts);
+
+  // Background registration to Node.js backend
+  if (typeof window !== 'undefined') {
+    fetch('/api/admin/staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: newStaffAccount.name,
+        email: newStaffAccount.email,
+        staffId: newStaffAccount.staffId,
+        role: newStaffAccount.role,
+        department: newStaffAccount.department,
+        faculty: newStaffAccount.faculty,
+        level: newStaffAccount.level,
+        password: assignedPass,
+        phone: newStaffAccount.phone,
+      }),
+    }).catch(() => {
+      // Fallback gracefully
+    });
+  }
+
+  const profile: UserProfile = {
+    id: newStaffAccount.id,
+    name: newStaffAccount.name,
+    email: newStaffAccount.email,
+    role: newStaffAccount.role,
+    department: newStaffAccount.department,
+    faculty: newStaffAccount.faculty,
+    staffId: newStaffAccount.staffId,
+    level: newStaffAccount.level,
+    session: newStaffAccount.session,
+    avatarUrl: newStaffAccount.avatarUrl,
+    phone: newStaffAccount.phone,
+  };
+
+  return {
+    success: true,
+    profile,
+    generatedPassword: assignedPass,
+  };
+}
+
+/**
+ * Retrieve staff directory specifically for HOD, administrative team, and lecturers.
+ */
+export function getStaffDirectory(): StaffMember[] {
+  const accounts = getRegisteredAccounts();
+  const staffAccounts = accounts.filter((acc) => acc.role !== 'student');
+
+  return staffAccounts.map((acc, index) => {
+    // Map assigned level to 1AD convention if applicable
+    let displayLevel = acc.level;
+    if (acc.level === '100 Level' || acc.level === '100L') displayLevel = '100 Level (1AD)';
+    else if (acc.level === '200 Level' || acc.level === '200L') displayLevel = '200 Level (2AD)';
+    else if (acc.level === '300 Level' || acc.level === '300L') displayLevel = '300 Level (3AD)';
+    else if (acc.level === '400 Level' || acc.level === '400L') displayLevel = '400 Level (4AD)';
+
+    return {
+      id: acc.id,
+      name: acc.name,
+      email: acc.email,
+      staffId: acc.staffId || `STAFF/CSC/${String(100 + index).padStart(3, '0')}`,
+      role: acc.role as 'lecturer' | 'hod' | 'dean',
+      department: acc.department,
+      faculty: acc.faculty,
+      assignedLevel: displayLevel,
+      assignedSession: acc.session || acc.admissionSession || '2026/2027',
+      phone: acc.phone || '+234 802 000 0000',
+      avatarUrl: acc.avatarUrl,
+      status: 'Active',
+      adviseeCount: acc.role === 'lecturer' ? (acc.level?.includes('100') ? 180 : acc.level?.includes('200') ? 165 : acc.level?.includes('300') ? 142 : 130) : undefined,
+      dateRegistered: 'Oct 2026',
+    };
+  });
+}
+
+/**
+ * Reset password for either student or staff member by their email, matricNo, or staffId.
+ */
+export function resetAccountPassword(
+  identifier: string,
+  newPassword: string
+): { success: boolean; message?: string; error?: string } {
+  const cleanId = identifier.trim().toLowerCase();
+  const cleanPass = newPassword.trim();
+
+  if (!cleanId) {
+    return { success: false, error: 'Please enter your registered email, Matric Number, or Staff ID.' };
+  }
+
+  if (!cleanPass || cleanPass.length < 5) {
+    return { success: false, error: 'New password must be at least 5 characters long.' };
+  }
+
+  const accounts = getRegisteredAccounts();
+  const index = accounts.findIndex((acc) => {
+    const emailMatch = acc.email.toLowerCase() === cleanId;
+    const matricMatch = acc.matricNo && acc.matricNo.toLowerCase() === cleanId;
+    const staffMatch = acc.staffId && acc.staffId.toLowerCase() === cleanId;
+    return emailMatch || matricMatch || staffMatch;
+  });
+
+  if (index === -1) {
+    return {
+      success: false,
+      error: `Account with identifier "${identifier}" was not found. Please verify the credentials.`,
+    };
+  }
+
+  accounts[index].password = cleanPass;
+  saveRegisteredAccounts(accounts);
+
+  // Background sync with Node.js backend
+  if (typeof window !== 'undefined') {
+    fetch('/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: cleanId, newPassword: cleanPass }),
+    }).catch(() => {});
+  }
+
+  return {
+    success: true,
+    message: `Password has been reset successfully for ${accounts[index].name} (${accounts[index].email}). You may now sign in with your new credentials.`,
+  };
+}
+
+/**
+ * Update staff member details from Admin Portal
+ */
+export function updateStaffMember(
+  id: string,
+  updates: Partial<ManualStaffRegistrationPayload>
+): { success: boolean; error?: string } {
+  const accounts = getRegisteredAccounts();
+  const idx = accounts.findIndex((acc) => acc.id === id || (acc.staffId && acc.staffId === id));
+
+  if (idx === -1) {
+    return { success: false, error: 'Staff member record not found.' };
+  }
+
+  if (updates.name) accounts[idx].name = updates.name.trim();
+  if (updates.role) accounts[idx].role = updates.role;
+  if (updates.department) accounts[idx].department = updates.department;
+  if (updates.faculty) accounts[idx].faculty = updates.faculty;
+  if (updates.assignedLevel) accounts[idx].level = updates.assignedLevel;
+  if (updates.assignedSession) accounts[idx].session = updates.assignedSession;
+  if (updates.phone) accounts[idx].phone = updates.phone.trim();
+  if (updates.password && updates.password.trim().length >= 4) {
+    accounts[idx].password = updates.password.trim();
+  }
+
+  saveRegisteredAccounts(accounts);
+  return { success: true };
+}
+
+/**
+ * Delete / deactivate a staff member from Admin Portal
+ */
+export function deleteStaffMember(id: string): { success: boolean; error?: string } {
+  const accounts = getRegisteredAccounts();
+  const filtered = accounts.filter((acc) => acc.id !== id && acc.staffId !== id);
+
+  if (filtered.length === accounts.length) {
+    return { success: false, error: 'Staff member not found.' };
+  }
+
+  saveRegisteredAccounts(filtered);
+  return { success: true };
 }
