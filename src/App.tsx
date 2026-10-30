@@ -63,6 +63,10 @@ interface ToastNotice {
   type: 'success' | 'info' | 'warning';
 }
 
+const isAdminPortalPath = (): boolean => typeof window !== 'undefined'
+  && window.location.pathname.replace(/\/+$/, '') === '/admin-portal';
+const canOpenAdminPortal = (role: UserRole): boolean => ['admin', 'dean', 'hod'].includes(role);
+
 const EMPTY_STUDENT_STATS: StudentStats = {
   cgpa: 0,
   cgpaDelta: 0,
@@ -100,7 +104,7 @@ export function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(isSupabaseConfigured);
   const [userRole, setUserRole] = useState<UserRole>('student');
-  const [currentTab, setCurrentTab] = useState<string>(() => typeof window !== 'undefined' && window.location.pathname === '/admin-portal' ? 'admin' : 'dashboard');
+  const [currentTab, setCurrentTab] = useState<string>(() => isAdminPortalPath() ? 'admin' : 'dashboard');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState<boolean>(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
@@ -181,23 +185,23 @@ export function App() {
   const [isForceUpdating, setIsForceUpdating] = useState<boolean>(false);
 
   useEffect(() => {
-    const handleHistoryChange = () => setCurrentTab(window.location.pathname === '/admin-portal' ? 'admin' : 'dashboard');
+    const handleHistoryChange = () => setCurrentTab(isAdminPortalPath() ? 'admin' : 'dashboard');
     window.addEventListener('popstate', handleHistoryChange);
     return () => window.removeEventListener('popstate', handleHistoryChange);
   }, []);
 
   const openAdminPortal = () => {
-    if (!['admin', 'dean', 'hod'].includes(userRole)) return;
-    if (window.location.pathname !== '/admin-portal') window.history.pushState({}, '', '/admin-portal');
+    if (!canOpenAdminPortal(userRole)) return;
+    if (!isAdminPortalPath()) window.history.pushState({}, '', '/admin-portal');
     setCurrentTab('admin');
   };
 
   const navigateToTab = (tab: string) => {
     if (tab === 'admin') {
-      if (['admin', 'dean', 'hod'].includes(userRole)) openAdminPortal();
+      if (canOpenAdminPortal(userRole)) openAdminPortal();
       return;
     }
-    if (window.location.pathname === '/admin-portal') window.history.pushState({}, '', '/');
+    if (isAdminPortalPath()) window.history.pushState({}, '', '/');
     setCurrentTab(tab);
   };
 
@@ -238,8 +242,8 @@ export function App() {
         setUserRole(profile.role);
         if (profile.mustChangePassword) setShowForcePasswordChange(true);
         setActiveStudentAdviserEmail('');
-        const adminPath = window.location.pathname === '/admin-portal' && ['admin', 'dean', 'hod'].includes(profile.role);
-        if (window.location.pathname === '/admin-portal' && !adminPath) window.history.replaceState({}, '', '/');
+        const adminPath = isAdminPortalPath() && canOpenAdminPortal(profile.role);
+        if (isAdminPortalPath() && !adminPath) window.history.replaceState({}, '', '/');
         setCurrentTab(adminPath ? 'admin' : profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
         setCourseResults([]);
         setStudentStats(EMPTY_STUDENT_STATS);
@@ -459,6 +463,7 @@ export function App() {
 
   // Guard currentTab against active role
   useEffect(() => {
+    if (!isAuthenticated) return;
     if (!isTabAllowedForRole(currentTab, userRole)) {
       if (userRole === 'student' || userRole === 'lecturer') {
         setCurrentTab('dashboard');
@@ -468,7 +473,7 @@ export function App() {
         setCurrentTab('executive');
       }
     }
-  }, [userRole, currentTab]);
+  }, [isAuthenticated, userRole, currentTab]);
 
   // Nudge individual student handler
   const handleNudgeStudent = (adviseeId: string, studentName: string) => {
@@ -995,9 +1000,9 @@ export function App() {
           setActiveStaffContactEmail('');
           setActiveStudentAdviserEmail('');
           setHasNudgeNotice(false);
-          if (window.location.pathname === '/admin-portal' && ['admin', 'dean', 'hod'].includes(profile.role)) {
+          if (isAdminPortalPath() && canOpenAdminPortal(profile.role)) {
             setCurrentTab('admin');
-          } else if (window.location.pathname === '/admin-portal') {
+          } else if (isAdminPortalPath()) {
             window.history.replaceState({}, '', '/');
             setCurrentTab(profile.role === 'student' || profile.role === 'lecturer' ? 'dashboard' : profile.role === 'hod' ? 'departmental' : 'executive');
           } else if (profile.role === 'student' || profile.role === 'lecturer') {

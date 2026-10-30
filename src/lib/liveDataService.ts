@@ -8,9 +8,15 @@ type ProfileRow = {
   user_id: string;
   full_name: string;
   email: string;
-  role: UserRole;
+  role: string;
   department: string;
   faculty: string;
+};
+
+const normalizeProfileRole = (role: string): UserRole | null => {
+  const normalized = role.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (normalized === 'super_admin' || normalized === 'system_admin' || normalized === 'superadmin') return 'admin';
+  return ['student', 'lecturer', 'hod', 'dean', 'admin'].includes(normalized) ? normalized as UserRole : null;
 };
 
 type StudentRow = { matric_no?: string | null; level?: string | null; admission_session?: string | null; avatar_url?: string | null; phone?: string | null; has_uploaded_transcript?: boolean | null; transcript_file_name?: string | null; result_prompt_dismissed_semester?: string | null };
@@ -20,7 +26,7 @@ const profileFromRow = (row: ProfileRow, details: StudentRow | StaffProfileRow =
   id: row.user_id,
   name: row.full_name,
   email: row.email,
-  role: row.role,
+  role: normalizeProfileRole(row.role)!,
   department: row.department,
   faculty: row.faculty,
   matricNo: 'matric_no' in details ? details.matric_no || undefined : undefined,
@@ -66,10 +72,16 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
   const { data, error } = await client.from('profiles').select('user_id,full_name,email,role,department,faculty').eq('user_id', user.id).maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  const detailTable = (data as ProfileRow).role === 'student' ? 'students' : 'staff_profiles';
+  const identityRow = data as ProfileRow;
+  const role = normalizeProfileRole(identityRow.role);
+  if (!role) throw new Error(`The account has an unsupported profile role: ${identityRow.role}. Contact an administrator.`);
+  const detailTable = role === 'student' ? 'students' : 'staff_profiles';
   const { data: details, error: detailsError } = await client.from(detailTable).select('*').eq('user_id', user.id).maybeSingle();
-  if (detailsError) throw detailsError;
-  const profile = profileFromRow(data as ProfileRow, details || {});
+  // The shared profile row is sufficient to identify an authorized role and
+  // route the user. A missing/temporarily unavailable detail table must not
+  // send an authenticated administrator back to the sign-in screen.
+  if (detailsError) console.warn(`Could not load ${detailTable} details for the signed-in profile`, detailsError);
+  const profile = profileFromRow({ ...identityRow, role }, details || {});
   if (profile.role === 'student' && profile.admissionSession && profile.level) {
     const { data: assignment, error: assignmentError } = await client.from('adviser_assignments').select('adviser_id').eq('department', profile.department).eq('admission_session', profile.admissionSession).eq('level', profile.level).maybeSingle();
     if (assignmentError) throw assignmentError;
