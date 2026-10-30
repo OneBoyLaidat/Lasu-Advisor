@@ -579,6 +579,75 @@ export async function loadStaffDirectory(): Promise<StaffMember[]> {
   }));
 }
 
+export type StaffProfileUpdate = Pick<ManualStaffRegistrationPayload, 'name' | 'staffId' | 'role' | 'department' | 'faculty'>
+  & Pick<ManualStaffRegistrationPayload, 'assignedLevel' | 'assignedSession' | 'phone'>;
+
+export async function updateStaffProfile(userId: string, updates: StaffProfileUpdate): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured) {
+    return updateStaffMember(userId, updates);
+  }
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Database service is unavailable.' };
+  const { error } = await client.from('profiles').update({
+    full_name: updates.name.trim(),
+    staff_id: updates.staffId.trim().toUpperCase() || null,
+    role: updates.role,
+    department: updates.department,
+    faculty: updates.faculty,
+    level: updates.assignedLevel || null,
+    admission_session: updates.assignedSession || null,
+    phone: updates.phone?.trim() || null,
+  }).eq('user_id', userId);
+  return error ? { success: false, error: error.message } : { success: true };
+}
+
+const DEPARTMENT_HOD_STORAGE_KEY = 'lasu_department_hod_assignments';
+
+export async function loadDepartmentHodAssignments(): Promise<Record<string, StaffMember>> {
+  if (!isSupabaseConfigured) {
+    try {
+      const ids = JSON.parse(localStorage.getItem(DEPARTMENT_HOD_STORAGE_KEY) || '{}') as Record<string, string>;
+      const staff = getStaffDirectory();
+      return Object.entries(ids).reduce<Record<string, StaffMember>>((result, [department, id]) => {
+        const hod = staff.find((item) => item.id === id && item.role === 'hod');
+        if (hod) result[department] = hod;
+        return result;
+      }, {});
+    } catch { return {}; }
+  }
+  const client = getSupabaseClient();
+  if (!client) return {};
+  const { data: assignments, error } = await client.from('department_hod_assignments').select('department,hod_id');
+  if (error) throw error;
+  if (!assignments?.length) return {};
+  const staff = await loadStaffDirectory();
+  const byId = new Map(staff.map((member) => [member.id, member]));
+  return assignments.reduce<Record<string, StaffMember>>((result, assignment) => {
+    const hod = byId.get(assignment.hod_id);
+    if (hod) result[assignment.department] = hod;
+    return result;
+  }, {});
+}
+
+export async function setDepartmentHod(department: string, hodId: string | null): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured) {
+    try {
+      const assignments = JSON.parse(localStorage.getItem(DEPARTMENT_HOD_STORAGE_KEY) || '{}') as Record<string, string>;
+      Object.entries(assignments).forEach(([currentDepartment, currentHod]) => {
+        if (currentHod === hodId) delete assignments[currentDepartment];
+      });
+      if (hodId) assignments[department] = hodId;
+      else delete assignments[department];
+      localStorage.setItem(DEPARTMENT_HOD_STORAGE_KEY, JSON.stringify(assignments));
+      return { success: true };
+    } catch { return { success: false, error: 'Could not save the department HOD assignment.' }; }
+  }
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Database service is unavailable.' };
+  const { error } = await client.rpc('set_department_hod', { target_department: department, target_hod_id: hodId });
+  return error ? { success: false, error: error.message } : { success: true };
+}
+
 export async function updateOwnPassword(password: string): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };

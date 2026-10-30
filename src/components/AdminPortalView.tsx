@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, LASU_DEPARTMENTS } from '../types';
-import { loadStaffDirectory, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember } from '../lib/liveDataService';
+import { loadStaffDirectory, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, StaffProfileUpdate } from '../lib/liveDataService';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface AdminPortalViewProps {
@@ -31,6 +31,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   onNavigateToTab,
 }) => {
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [departmentHods, setDepartmentHods] = useState<Record<string, StaffMember>>({});
+  const [hodSelections, setHodSelections] = useState<Record<string, string>>({});
+  const [savingDepartment, setSavingDepartment] = useState<string | null>(null);
+  const [editTarget, setEditTarget] = useState<StaffMember | null>(null);
+  const [editForm, setEditForm] = useState<StaffProfileUpdate | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('All');
   const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>('All');
@@ -66,11 +72,21 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
   // Success toast notification
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  const [portalError, setPortalError] = useState<string | null>(null);
 
   // Load staff data on mount
   const refreshStaffList = async () => {
-    try { setStaffList(await loadStaffDirectory()); }
-    catch (error) { setModalError(error instanceof Error ? error.message : 'Could not load staff directory.'); }
+    try {
+      const [staff, hods] = await Promise.all([loadStaffDirectory(), loadDepartmentHodAssignments()]);
+      setStaffList(staff);
+      setDepartmentHods(hods);
+      setHodSelections(LASU_DEPARTMENTS.reduce<Record<string, string>>((selection, department) => {
+        selection[department] = hods[department]?.id || '';
+        return selection;
+      }, {}));
+      setPortalError(null);
+    }
+    catch (error) { setPortalError(error instanceof Error ? error.message : 'Could not load staff directory.'); }
   };
 
   useEffect(() => {
@@ -95,7 +111,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
   // Calculate statistics
   const totalStaffCount = staffList.length;
-  const hodCount = staffList.filter((s) => s.role === 'hod').length;
+  const assignedDepartmentHodCount = LASU_DEPARTMENTS.filter((department) => Boolean(departmentHods[department])).length;
   const lecturerCount = staffList.filter((s) => s.role === 'lecturer').length;
   const deanCount = staffList.filter((s) => s.role === 'dean').length;
 
@@ -191,6 +207,51 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     }
   };
 
+  const handleSaveDepartmentHod = async (department: string) => {
+    setSavingDepartment(department);
+    try {
+      const result = await setDepartmentHod(department, hodSelections[department] || null);
+      if (!result.success) setPortalError(result.error || 'Could not update this department HOD.');
+      else {
+        setPortalError(null);
+        setSuccessBanner(`${department} HOD assignment updated.`);
+        await refreshStaffList();
+      }
+    } catch (error) {
+      setPortalError(error instanceof Error ? error.message : 'Could not update this department HOD.');
+    } finally { setSavingDepartment(null); }
+  };
+
+  const openStaffEditor = (staff: StaffMember) => {
+    setModalError(null);
+    setEditTarget(staff);
+    setEditForm({
+      name: staff.name, staffId: staff.staffId, role: staff.role,
+      department: staff.department, faculty: staff.faculty,
+      assignedLevel: staff.assignedLevel || '', assignedSession: staff.assignedSession || '', phone: staff.phone || '',
+    });
+  };
+
+  const handleSaveStaffProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editTarget || !editForm) return;
+    setIsSavingProfile(true);
+    try {
+      const result = await updateStaffProfile(editTarget.id, editForm);
+      if (!result.success) setModalError(result.error || 'Could not update staff profile.');
+      else {
+        setEditTarget(null);
+        setEditForm(null);
+        setModalError(null);
+        setPortalError(null);
+        setSuccessBanner(`Profile updated for ${editForm.name}.`);
+        await refreshStaffList();
+      }
+    } catch (error) {
+      setModalError(error instanceof Error ? error.message : 'Could not update staff profile.');
+    } finally { setIsSavingProfile(false); }
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header & Management Bar */}
@@ -237,6 +298,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       </div>
 
       {/* Success Notification Banner */}
+      {portalError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs font-semibold text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">{portalError}</div>}
       {successBanner && (
         <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-200 text-xs flex items-center justify-between shadow-xs animate-in fade-in duration-200">
           <div className="flex items-center gap-2">
@@ -265,19 +327,19 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{totalStaffCount}</p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-            Active across faculty entities
+            Current staff accounts
           </p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Department Heads (HOD)</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">HOD assignments</span>
             <span className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 flex items-center justify-center">
               <span className="material-symbols-outlined text-[18px]">corporate_fare</span>
             </span>
           </div>
-          <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{hodCount}</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Lead Academic Administrators</p>
+          <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{assignedDepartmentHodCount}/5</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Distinct department slots filled</p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
@@ -288,7 +350,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             </span>
           </div>
           <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{lecturerCount}</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Mapped to 100L - 400L Cohorts</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Registered lecturer accounts</p>
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
@@ -303,53 +365,40 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
         </div>
       </div>
 
-      {/* 1AD Level Advising & Cohort Hierarchy Overview */}
+      {/* Five department HOD assignments */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <span className="material-symbols-outlined text-emerald-600 text-[20px]">account_tree</span>
-              1AD Menu &amp; Cohort Level Allocation
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Current mapping of Level Advisers (1AD for 100L, 2AD for 200L, 3AD for 300L, 4AD for 400L) and Department Heads.
-            </p>
-          </div>
-          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg">
-            Session: 2026/2027 Active
-          </span>
+          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+            <span className="material-symbols-outlined text-emerald-600 text-[20px]">domain</span>
+            Department HOD assignments
+          </h2>
+          <span className="text-xs text-slate-500 dark:text-slate-400">One distinct HOD per department</span>
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { tag: '1AD', level: '100 Level Cohort', adviser: 'Dr. Sarah Jenkins', advisees: 180, passRate: '88%', status: 'Active' },
-            { tag: '2AD', level: '200 Level Cohort', adviser: 'Dr. Olumide Johnson', advisees: 165, passRate: '78%', status: 'Active' },
-            { tag: '3AD', level: '300 Level Cohort', adviser: 'Assoc. Prof. Sarah Jenkins', advisees: 142, passRate: '85%', status: 'Active' },
-            { tag: '4AD', level: '400 Level Cohort', adviser: 'Dr. Funke Oladipo', advisees: 130, passRate: '91%', status: 'Active' },
-          ].map((item) => (
-            <div
-              key={item.tag}
-              className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300">
-                    {item.tag} Adviser
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {LASU_DEPARTMENTS.map((department) => {
+            const assignedHod = departmentHods[department];
+            const candidates = staffList.filter((staff) => staff.role === 'hod');
+            return (
+              <div key={department} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{department}</h3>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${assignedHod ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'}`}>
+                    {assignedHod ? 'Assigned' : 'Vacant'}
                   </span>
-                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">{item.passRate} pass</span>
                 </div>
-                <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">{item.level}</h4>
-                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-1 truncate">{item.adviser}</p>
+                <p className="min-h-5 text-xs text-slate-500 dark:text-slate-400">{assignedHod?.name || 'No HOD assigned'}</p>
+                <div className="flex gap-2">
+                  <select value={hodSelections[department] || ''} onChange={(event) => setHodSelections((current) => ({ ...current, [department]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    <option value="">Unassign HOD</option>
+                    {candidates.map((hod) => <option key={hod.id} value={hod.id}>{hod.name} · {hod.department}</option>)}
+                  </select>
+                  <button type="button" disabled={savingDepartment === department} onClick={() => void handleSaveDepartmentHod(department)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">
+                    {savingDepartment === department ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
               </div>
-              <div className="mt-3 pt-2.5 border-t border-slate-200/60 dark:border-slate-700/60 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
-                <span>{item.advisees} Advisees</span>
-                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  {item.status}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -467,6 +516,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     </td>
                     <td className="py-3 px-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button type="button" onClick={() => openStaffEditor(staff)} className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300" title={`Edit ${staff.name} profile`} aria-label={`Edit ${staff.name} profile`}>
+                          <span className="material-symbols-outlined text-[17px]">edit</span>
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -497,6 +549,59 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           </table>
         </div>
       </div>
+
+      {editTarget && editForm && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/65 p-4 backdrop-blur-sm">
+          <form onSubmit={handleSaveStaffProfile} className="max-h-[90vh] w-full max-w-2xl space-y-4 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Edit staff profile</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">{editTarget.email}</p>
+              </div>
+              <button type="button" onClick={() => { setEditTarget(null); setEditForm(null); }} aria-label="Close profile editor" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Full name
+                <input required value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Staff ID
+                <input required value={editForm.staffId} onChange={(e) => setEditForm({ ...editForm, staffId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Role
+                <select value={editForm.role} onChange={(e) => setEditForm({ ...editForm, role: e.target.value as StaffProfileUpdate['role'] })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                  <option value="lecturer">Lecturer</option><option value="hod">HOD</option><option value="dean">Dean</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Department
+                <select value={editForm.department} onChange={(e) => setEditForm({ ...editForm, department: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                  {LASU_DEPARTMENTS.map((department) => <option key={department} value={department}>{department}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Faculty
+                <input required value={editForm.faculty} onChange={(e) => setEditForm({ ...editForm, faculty: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Advising level
+                <select value={editForm.assignedLevel || ''} onChange={(e) => setEditForm({ ...editForm, assignedLevel: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                  <option value="">No level assigned</option><option>100 Level (1AD)</option><option>200 Level (2AD)</option><option>300 Level (3AD)</option><option>400 Level (4AD)</option>
+                </select>
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Session
+                <input value={editForm.assignedSession || ''} onChange={(e) => setEditForm({ ...editForm, assignedSession: e.target.value })} placeholder="e.g. 2025/2026" className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Phone
+                <input value={editForm.phone || ''} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+            </div>
+            {modalError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">{modalError}</p>}
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+              <button type="button" onClick={() => { setEditTarget(null); setEditForm(null); }} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-semibold dark:border-slate-700">Cancel</button>
+              <button type="submit" disabled={isSavingProfile} className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">{isSavingProfile ? 'Saving…' : 'Save profile'}</button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* MODAL 1: MANUAL STAFF REGISTRATION MODAL                                  */}

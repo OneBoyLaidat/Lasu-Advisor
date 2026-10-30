@@ -703,6 +703,7 @@ export function updateStaffMember(
   }
 
   if (updates.name) accounts[idx].name = updates.name.trim();
+  if (updates.staffId) accounts[idx].staffId = updates.staffId.trim().toUpperCase();
   if (updates.role) accounts[idx].role = updates.role;
   if (updates.department) accounts[idx].department = updates.department;
   if (updates.faculty) accounts[idx].faculty = updates.faculty;

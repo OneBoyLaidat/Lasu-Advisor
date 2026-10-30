@@ -31,7 +31,7 @@ Restart the dev server after editing `.env`. Local development falls back to dem
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, `202610300003_admin_staff_management.sql`, then `202610300004_staff_credentials.sql`. The last migration adds the first-login password flag, role check, and staff provisioning permission helper.
+Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, `202610300003_admin_staff_management.sql`, `202610300004_staff_credentials.sql`, then `202610300005_admin_portal_management.sql`. The last migration adds the five department HOD slots, profile-edit permissions, and the transactional HOD reassignment function.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|
@@ -66,6 +66,10 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `thread_key` | `text` | Stable conversation grouping key |
 | | `created_at` | `timestamptz` default `now()` | Send time |
 | | `read_at` | `timestamptz` nullable | Null means unread; set when recipient opens the conversation |
+| `department_hod_assignments` | `department` | `text` PK | One of the five LASU departments; one HOD slot per department |
+| | `hod_id` | `uuid` unique FK to `profiles.user_id` | HOD assigned to that department; an HOD can occupy one slot |
+| | `assigned_at` | `timestamptz` default `now()` | Last assignment time |
+| | `assigned_by` | `uuid` FK to `profiles.user_id` | Admin who made the assignment |
 
 Each `student_results.courses` array item follows the frontend `CourseResult` shape: `code` (string), `title` (string), `units` (number), `grade` (string), `score` (number), `status` (string), `semester` (string), `academicYear` (string), and `gpPoints` (number). Example: `[{"code":"CSC301","title":"Data Structures","units":3,"grade":"A","score":78,"status":"Passed","semester":"First Semester","academicYear":"2024/2025","gpPoints":15}]`.
 
@@ -105,7 +109,7 @@ The primary key permits one adviser for each department/session/level cohort. HO
 
 ## 4. RLS and permissions installed by the migration
 
-The migration enables RLS on all four tables and installs these policies (the policy names are also visible in the Supabase dashboard):
+The migrations enable RLS on the application tables and install these policies (the policy names are also visible in the Supabase dashboard):
 
 | Policy | Effect |
 |---|---|
@@ -121,6 +125,8 @@ The migration enables RLS on all four tables and installs these policies (the po
 | `allowed direct message insert` | The sender must be the signed-in user and `can_message` must approve the role pairing: student ↔ assigned lecturer, lecturer ↔ assigned student, HOD ↔ department lecturers/dean, or dean ↔ HOD in the same faculty. |
 | `recipient marks messages read` | Only the recipient may update their received message. A trigger makes message content and participants immutable and allows only an unread-to-read receipt change. |
 | `student owns result files` (Storage) | Files in `result-documents` must be stored under the signed-in student's UUID folder. The bucket is private. |
+| `system administrators read department HOD assignments` | Only system administrators can view the five department assignment slots; changes are made through the `set_department_hod` permission-checked function. |
+| `system administrators update staff profiles` | Only system administrators can edit staff records from the portal. |
 
 After running the migration, open **Database → Publications** and make sure `public.messages` is enabled in the `supabase_realtime` publication. The app subscribes to incoming message inserts so an open inbox can refresh without a reload.
 

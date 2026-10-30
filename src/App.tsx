@@ -187,8 +187,17 @@ export function App() {
   }, []);
 
   const openAdminPortal = () => {
-    window.history.pushState({}, '', '/admin-portal');
+    if (window.location.pathname !== '/admin-portal') window.history.pushState({}, '', '/admin-portal');
     setCurrentTab('admin');
+  };
+
+  const navigateToTab = (tab: string) => {
+    if (tab === 'admin') {
+      if (userRole === 'admin') openAdminPortal();
+      return;
+    }
+    if (window.location.pathname === '/admin-portal') window.history.pushState({}, '', '/');
+    setCurrentTab(tab);
   };
 
   const handleFirstPasswordUpdate = async (event: React.FormEvent) => {
@@ -1055,7 +1064,7 @@ export function App() {
       {/* Fixed Navigation Sidebar with Strict RBAC Filtering */}
       <Sidebar
         currentTab={currentTab}
-        setCurrentTab={setCurrentTab}
+        setCurrentTab={navigateToTab}
         userRole={userRole}
         userProfile={userProfile}
         isOpenMobile={isMobileNavOpen}
