@@ -1,6 +1,6 @@
 import { User } from '@supabase/supabase-js';
 import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConversation, UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload } from '../types';
-import { AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember, clearMustChangePassword } from './authService';
+import { AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember, clearMustChangePassword, hasUserLoggedInBefore, markUserAsLoggedIn } from './authService';
 import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
 import { getCurrentSemesterKey } from './academicUtils';
 
@@ -39,6 +39,7 @@ const profileFromRow = (row: ProfileRow, details: StudentRow | StaffProfileRow =
   resultPromptDismissedSemester: 'result_prompt_dismissed_semester' in details ? details.result_prompt_dismissed_semester || undefined : undefined,
   transcriptFileName: 'transcript_file_name' in details ? details.transcript_file_name || undefined : undefined,
   mustChangePassword: 'must_change_password' in details ? details.must_change_password || false : false,
+  hasLoggedInBefore: 'has_logged_in_before' in details ? Boolean((details as any).has_logged_in_before) : hasUserLoggedInBefore(row.user_id) || hasUserLoggedInBefore(row.email),
 });
 
 const identityToRow = (profile: UserProfile) => ({
@@ -58,12 +59,14 @@ const detailsToRow = (profile: UserProfile) => profile.role === 'student' ? ({
   admission_session: profile.admissionSession || null,
   avatar_url: profile.avatarUrl || null,
   phone: profile.phone || null,
+  has_logged_in_before: profile.hasLoggedInBefore || false,
 }) : ({
   staff_id: profile.staffId || null,
   level: profile.level || null,
   admission_session: profile.admissionSession || null,
   avatar_url: profile.avatarUrl || null,
   phone: profile.phone || null,
+  has_logged_in_before: profile.hasLoggedInBefore || false,
 });
 
 async function getProfileForUser(user: User): Promise<UserProfile | null> {
@@ -134,7 +137,14 @@ export async function signInAccount(identifier: string, password: string): Promi
       await client.auth.signOut();
       return { success: false, error: 'Your email is confirmed, but the student profile was not created. Apply the LASU Advisor Supabase migration and check the on_auth_user_created_lasu_profile trigger, then try again.' };
     }
-    return { success: true, profile };
+    const isFirstLogin = !profile.hasLoggedInBefore && !hasUserLoggedInBefore(profile.id) && !hasUserLoggedInBefore(profile.email);
+    if (isFirstLogin) {
+      markUserAsLoggedIn(profile.id);
+      markUserAsLoggedIn(profile.email);
+      profile.hasLoggedInBefore = true;
+      persistUserProfile(profile).catch((e) => console.warn('Could not persist hasLoggedInBefore to profile', e));
+    }
+    return { success: true, profile, isFirstLogin };
   } catch (profileError) {
     await client.auth.signOut();
     return { success: false, error: profileError instanceof Error ? profileError.message : 'Could not load your profile.' };
@@ -770,4 +780,36 @@ export async function resetStaffCredentials(staffId: string, password: string): 
   } catch (error) { return { success: false, error: describeSupabaseConnectionError(error) }; }
 }
 
-export { getStaffDirectory, updateStaffMember, deleteStaffMember, resetAccountPassword, clearMustChangePassword };
+export { hasUserLoggedInBefore, markUserAsLoggedIn, getStaffDirectory, updateStaffMember, deleteStaffMember, resetAccountPassword, clearMustChangePassword };
+
+export async function revokeStaffAccess(staffId: string): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured) {
+    return deleteStaffMember(staffId);
+  }
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+  const { data: sessionData, error: sessionError } = await client.auth.getSession();
+  if (sessionError || !sessionData.session?.access_token) {
+    return { success: false, error: 'Sign in with an authorized administrator account before revoking staff.' };
+  }
+  try {
+    const response = await fetch('/.netlify/functions/admin-revoke-staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
+      body: JSON.stringify({ staffId }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) return { success: false, error: result.error || 'Failed to revoke staff access.' };
+    return { success: true };
+  } catch (error) {
+    try {
+      await client.from('department_hod_assignments').delete().eq('hod_id', staffId);
+      await client.from('adviser_assignments').delete().eq('adviser_id', staffId);
+      await client.from('staff_profiles').delete().eq('user_id', staffId);
+      await client.from('profiles').delete().eq('user_id', staffId);
+      return { success: true };
+    } catch {
+      return { success: false, error: describeSupabaseConnectionError(error) };
+    }
+  }
+}

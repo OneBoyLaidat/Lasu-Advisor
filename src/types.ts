@@ -38,6 +38,7 @@ export interface UserProfile {
   assignedAdviserTitle?: string;
   archivedChats?: ArchivedChatThread[];
   mustChangePassword?: boolean;
+  hasLoggedInBefore?: boolean;
 }
 
 export interface CourseResult {

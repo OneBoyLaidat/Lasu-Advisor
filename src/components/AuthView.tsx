@@ -15,7 +15,7 @@ import confetti from 'canvas-confetti';
 export type AuthPageMode = 'login' | 'register-select' | 'register-student' | 'register-staff';
 
 interface AuthViewProps {
-  onLoginSuccess: (profile: UserProfile) => void;
+  onLoginSuccess: (profile: UserProfile, isFirstLogin?: boolean) => void;
   isDark?: boolean;
   onToggleDark?: () => void;
   initialPage?: AuthPageMode;
@@ -194,17 +194,19 @@ export const AuthView: React.FC<AuthViewProps> = ({
         setErrorMessage(result.error || 'Access denied. Check your email and password.');
         return;
       }
-      try {
-        confetti({
-          particleCount: 45,
-          spread: 60,
-          origin: { y: 0.8 },
-        });
-      } catch (err) {
-        // ignore
+      if (result.isFirstLogin) {
+        try {
+          confetti({
+            particleCount: 45,
+            spread: 60,
+            origin: { y: 0.8 },
+          });
+        } catch (err) {
+          // ignore
+        }
       }
 
-      onLoginSuccess(result.profile);
+      onLoginSuccess(result.profile, Boolean(result.isFirstLogin));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Could not sign in. Please try again.');
     } finally {
@@ -272,7 +274,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
         // ignore
       }
 
-      onLoginSuccess(result.profile);
+      onLoginSuccess(result.profile, true);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Registration failed. Please try again.');
     } finally {
@@ -314,7 +316,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
         // ignore
       }
 
-      onLoginSuccess(result.profile);
+      onLoginSuccess(result.profile, true);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Staff registration failed.');
     } finally {

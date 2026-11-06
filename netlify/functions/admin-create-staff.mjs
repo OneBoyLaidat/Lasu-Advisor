@@ -47,7 +47,7 @@ export async function handler(event) {
 
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email, password, email_confirm: true,
-    user_metadata: { account_type: 'student', full_name: name, role: 'student', department, faculty },
+    user_metadata: { account_type: 'staff', full_name: name, role, department, faculty },
   });
   if (createError || !created.user) return json(400, { error: createError?.message || 'Could not create staff login.' });
 

@@ -273,7 +273,6 @@ export function App() {
       });
       const prompt = !userProfile.hasUploadedTranscript;
       setHasNudgeNotice(prompt);
-      if (prompt) setIsTranscriptModalOpen(true);
       return () => { active = false; };
     }
 
@@ -292,7 +291,6 @@ export function App() {
         const needsCurrentResult = transcript?.semesterKey !== getCurrentSemesterKey()
           && userProfile.resultPromptDismissedSemester !== getCurrentSemesterKey();
         setHasNudgeNotice(needsCurrentResult);
-        if (needsCurrentResult) setIsTranscriptModalOpen(true);
       })
       .catch((error) => console.error('Could not load the student academic profile', error));
     return () => { active = false; };
@@ -987,7 +985,13 @@ export function App() {
       <AuthView
         isDark={isDark}
         onToggleDark={handleToggleDark}
-        onLoginSuccess={(profile) => {
+        onLoginSuccess={(profile, isFirstLogin = false) => {
+          // Upload Results modal should pop up automatically ONLY upon the user's very first login
+          if (isFirstLogin && profile.role === 'student') {
+            setIsTranscriptModalOpen(true);
+          } else {
+            setIsTranscriptModalOpen(false);
+          }
           setUserProfile(profile);
           setUserRole(profile.role);
           setShowForcePasswordChange(Boolean(profile.mustChangePassword));

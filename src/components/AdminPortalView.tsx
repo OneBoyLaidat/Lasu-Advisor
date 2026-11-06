@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload, LASU_DEPARTMENTS } from '../types';
-import { loadStaffDirectory, loadAdministrators, registerAdministratorAccount, updateAdministratorProfile, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, StaffProfileUpdate, AdministratorProfileUpdate } from '../lib/liveDataService';
+import { loadStaffDirectory, loadAdministrators, registerAdministratorAccount, updateAdministratorProfile, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, revokeStaffAccess, StaffProfileUpdate, AdministratorProfileUpdate } from '../lib/liveDataService';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface AdminPortalViewProps {
@@ -31,6 +31,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   onNavigateToTab,
 }) => {
   const isSystemAdmin = userRole === 'admin';
+  const canManageStaff = isSystemAdmin || userRole === 'dean' || !isSupabaseConfigured;
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [administratorList, setAdministratorList] = useState<AdministratorProfile[]>([]);
   const [departmentHods, setDepartmentHods] = useState<Record<string, StaffMember>>({});
@@ -211,6 +212,24 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     }
   };
 
+  
+  const handleRevokeStaff = async (staff: StaffMember) => {
+    if (window.confirm(`Are you sure you want to revoke staff access for ${staff.name} (${staff.staffId})? They will no longer be able to log in to the portal.`)) {
+      try {
+        const res = await revokeStaffAccess(staff.id);
+        if (res.success) {
+          await refreshStaffList();
+          setSuccessBanner(`Staff access revoked for ${staff.name} (${staff.staffId}).`);
+          setTimeout(() => setSuccessBanner(null), 4000);
+        } else {
+          setPortalError(res.error || 'Failed to revoke staff access.');
+        }
+      } catch (err) {
+        setPortalError(err instanceof Error ? err.message : 'Error revoking staff access.');
+      }
+    }
+  };
+
   const handleDeleteStaff = (staff: StaffMember) => {
     if (window.confirm(`Are you sure you want to deactivate and remove ${staff.name} (${staff.staffId}) from the staff registry?`)) {
       const res = deleteStaffMember(staff.id);
@@ -344,7 +363,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             <span className="material-symbols-outlined text-[16px] text-slate-500 dark:text-slate-400">refresh</span>
             Refresh Directory
           </button>
-          {isSystemAdmin && <button
+          {canManageStaff && <button
             type="button"
             id="admin-open-register-modal-btn"
             onClick={() => {
@@ -611,10 +630,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     </td>
                     <td className="py-3 px-3 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {isSystemAdmin && <button type="button" onClick={() => openStaffEditor(staff)} className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300" title={`Edit ${staff.name} profile`} aria-label={`Edit ${staff.name} profile`}>
+                        {canManageStaff && <button type="button" onClick={() => openStaffEditor(staff)} className="rounded-lg p-1.5 text-slate-500 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300" title={`Edit ${staff.name} profile`} aria-label={`Edit ${staff.name} profile`}>
                           <span className="material-symbols-outlined text-[17px]">edit</span>
                         </button>}
-                        {isSystemAdmin && <button
+                        {canManageStaff && <button
                           type="button"
                           onClick={() => {
                             setResetTargetStaff(staff);
@@ -627,13 +646,14 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                           <span className="material-symbols-outlined text-[14px]">lock_reset</span>
                           <span>Reset Pass</span>
                         </button>}
-                        {isSystemAdmin && !isSupabaseConfigured && <button
+                        {canManageStaff && <button
                           type="button"
-                          onClick={() => handleDeleteStaff(staff)}
-                          className="p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                          title="Deactivate staff record"
+                          onClick={() => handleRevokeStaff(staff)}
+                          className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 text-[11px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                          title={`Revoke access for ${staff.name}`}
                         >
-                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                          <span className="material-symbols-outlined text-[14px]">person_remove</span>
+                          <span>Revoke</span>
                         </button>}
                       </div>
                     </td>

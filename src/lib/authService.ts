@@ -31,6 +31,7 @@ export interface RegisteredAccount {
   phone?: string;
   hasUploadedTranscript?: boolean;
   mustChangePassword?: boolean;
+  hasLoggedInBefore?: boolean;
 }
 
 const STORAGE_KEY = 'lasu_registered_accounts_v2';
@@ -134,6 +135,27 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
   },
 ];
 
+
+export function hasUserLoggedInBefore(identifierOrId: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const key = `lasu_has_logged_in_${identifierOrId.trim().toLowerCase()}`;
+    return localStorage.getItem(key) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function markUserAsLoggedIn(identifierOrId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const key = `lasu_has_logged_in_${identifierOrId.trim().toLowerCase()}`;
+    localStorage.setItem(key, 'true');
+  } catch (e) {
+    console.error('Failed to mark user as logged in', e);
+  }
+}
+
 export function getRegisteredAccounts(): RegisteredAccount[] {
   if (typeof window === 'undefined') return DEFAULT_REGISTERED_ACCOUNTS;
   try {
@@ -218,6 +240,7 @@ export interface AuthResult {
   success: boolean;
   profile?: UserProfile;
   error?: string;
+  isFirstLogin?: boolean;
 }
 
 export function authenticateUser(
@@ -269,6 +292,15 @@ export function authenticateUser(
 
   const finalRole = matched.role;
 
+  const isFirstLogin = !matched.hasLoggedInBefore && !hasUserLoggedInBefore(matched.id) && !hasUserLoggedInBefore(matched.email);
+
+  if (isFirstLogin) {
+    markUserAsLoggedIn(matched.id);
+    markUserAsLoggedIn(matched.email);
+    matched.hasLoggedInBefore = true;
+    saveRegisteredAccounts(accounts);
+  }
+
   const profile: UserProfile = {
     id: matched.id,
     name: matched.name,
@@ -290,11 +322,13 @@ export function authenticateUser(
     phone: matched.phone,
     hasUploadedTranscript: matched.hasUploadedTranscript ?? false,
     mustChangePassword: matched.mustChangePassword ?? false,
+    hasLoggedInBefore: !isFirstLogin,
   };
 
   return {
     success: true,
     profile,
+    isFirstLogin,
   };
 }
 

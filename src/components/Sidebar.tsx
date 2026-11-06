@@ -64,13 +64,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'analytics',
       label: 'Analytics & Projections',
       icon: 'analytics',
-      roles: ['student', 'lecturer', 'hod', 'dean'],
+      roles: ['student', 'lecturer', 'hod', 'dean', 'admin'],
     },
     {
       id: 'settings',
       label: 'Settings & Security',
       icon: 'settings',
-      roles: ['student', 'lecturer', 'hod', 'dean'],
+      roles: ['student', 'lecturer', 'hod', 'dean', 'admin'],
     },
   ];
 

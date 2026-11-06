@@ -79,6 +79,17 @@ export const INITIAL_USER_PROFILES: Record<string, UserProfile> = {
     staffId: 'DEAN/CIT/001',
     avatarUrl: DEAN_AVATAR,
   },
+  admin: {
+    id: 'usr_admin_01',
+    name: 'LASU System Admin',
+    email: 'admin@lasu.edu.ng',
+    role: 'admin',
+    department: 'Computer Science',
+    faculty: 'Computing & Information Technology',
+    staffId: 'ADMIN/SYS/001',
+    avatarUrl: LECTURER_AVATAR,
+    hasLoggedInBefore: true,
+  },
 };
 
 export const INITIAL_STUDENT_STATS: StudentStats = {
