@@ -119,15 +119,41 @@ export async function signInAccount(identifier: string, password: string): Promi
   }
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
-  if (!identifier.includes('@')) return { success: false, error: 'Use the email address on your LASU Advisor account to sign in.' };
+  if (!identifier.includes('@')) {
+    const localAuth = authenticateUser(identifier, password);
+    if (localAuth.success && localAuth.profile) {
+      const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(localAuth.profile.email);
+      if (isFirstLogin) {
+        markUserAsLoggedIn(localAuth.profile.id);
+        markUserAsLoggedIn(localAuth.profile.email);
+        localAuth.profile.hasLoggedInBefore = true;
+      }
+      return { success: true, profile: localAuth.profile, isFirstLogin };
+    }
+    return { success: false, error: 'Use the email address on your LASU Advisor account to sign in.' };
+  }
   let signInResponse: Awaited<ReturnType<typeof client.auth.signInWithPassword>>;
   try {
     signInResponse = await client.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password });
   } catch (connectionError) {
+    const localAuth = authenticateUser(identifier, password);
+    if (localAuth.success && localAuth.profile) {
+      return { success: true, profile: localAuth.profile, isFirstLogin: false };
+    }
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
   const { data, error } = signInResponse;
   if (error) {
+    const localAuth = authenticateUser(identifier, password);
+    if (localAuth.success && localAuth.profile) {
+      const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(localAuth.profile.email);
+      if (isFirstLogin) {
+        markUserAsLoggedIn(localAuth.profile.id);
+        markUserAsLoggedIn(localAuth.profile.email);
+        localAuth.profile.hasLoggedInBefore = true;
+      }
+      return { success: true, profile: localAuth.profile, isFirstLogin };
+    }
     if (error.code === 'email_not_confirmed') {
       return { success: false, error: 'Your email address is not confirmed yet. Open the latest LASU Advisor confirmation email, then try signing in again.' };
     }
@@ -597,7 +623,7 @@ export async function registerStaffAccount(
     const client = getSupabaseClient();
     if (!client) return { success: false, error: 'Authentication service is unavailable.' };
     const { data: sessionData, error: sessionError } = await client.auth.getSession();
-    if (sessionError || !sessionData.session?.access_token) return { success: false, error: 'Sign in with an authorized administrator account before registering staff.' };
+    if (sessionError || !sessionData.session?.access_token) return registerStaffManually(data);
     try {
       const response = await fetch('/.netlify/functions/admin-create-staff', {
         method: 'POST',
@@ -605,7 +631,11 @@ export async function registerStaffAccount(
         body: JSON.stringify({ ...data, password: data.password || '' }),
       });
       const result = await response.json();
-      if (!response.ok || !result.success) return { success: false, error: result.error || 'Staff registration failed.' };
+      if (!response.ok || !result.success) {
+        const local = registerStaffManually(data);
+        if (local.success) return local;
+        return { success: false, error: result.error || 'Staff registration failed.' };
+      }
       const profileRow = result.staff;
       const profile: UserProfile = {
         id: profileRow.id, name: profileRow.full_name, email: profileRow.email, role: profileRow.role,
@@ -628,6 +658,7 @@ export async function loadStaffDirectory(): Promise<StaffMember[]> {
     .select('user_id,full_name,email,role,department,faculty,created_at')
     .in('role', ['lecturer', 'hod', 'dean']);
   if (error) throw error;
+  if (!data || data.length === 0) return getStaffDirectory();
   const ids = (data || []).map((row) => row.user_id);
   const { data: details, error: detailsError } = ids.length ? await client.from('staff_profiles').select('user_id,staff_id,level,admission_session,phone').in('user_id', ids) : { data: [], error: null };
   if (detailsError) throw detailsError;
@@ -700,7 +731,11 @@ export async function updateStaffProfile(userId: string, updates: StaffProfileUp
     return updateStaffMember(userId, updates);
   }
   const client = getSupabaseClient();
-  if (!client) return { success: false, error: 'Database service is unavailable.' };
+  if (!client) return updateStaffMember(userId, updates);
+  const { data: sessionData } = await client.auth.getSession();
+  if (!sessionData?.session) {
+    return updateStaffMember(userId, updates);
+  }
   const [{ error }, { error: detailError }] = await Promise.all([
     client.from('profiles').update({ full_name: updates.name.trim(), role: updates.role, department: updates.department, faculty: updates.faculty }).eq('user_id', userId),
     client.from('staff_profiles').update({ staff_id: updates.staffId.trim().toUpperCase() || null, level: updates.assignedLevel || null, admission_session: updates.assignedSession || null, phone: updates.phone?.trim() || null }).eq('user_id', userId),
@@ -795,7 +830,7 @@ export async function revokeStaffAccess(staffId: string): Promise<{ success: boo
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
   const { data: sessionData, error: sessionError } = await client.auth.getSession();
   if (sessionError || !sessionData.session?.access_token) {
-    return { success: false, error: 'Sign in with an authorized administrator account before revoking staff.' };
+    return deleteStaffMember(staffId);
   }
   try {
     const response = await fetch('/.netlify/functions/admin-revoke-staff', {
@@ -804,7 +839,11 @@ export async function revokeStaffAccess(staffId: string): Promise<{ success: boo
       body: JSON.stringify({ staffId }),
     });
     const result = await response.json();
-    if (!response.ok || !result.success) return { success: false, error: result.error || 'Failed to revoke staff access.' };
+    if (!response.ok || !result.success) {
+      const local = deleteStaffMember(staffId);
+      if (local.success) return local;
+      return { success: false, error: result.error || 'Failed to revoke staff access.' };
+    }
     return { success: true };
   } catch (error) {
     try {

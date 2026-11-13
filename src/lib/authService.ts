@@ -84,6 +84,18 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
     avatarUrl: LECTURER_AVATAR,
   },
   {
+    id: 'usr_admin_01',
+    name: 'LASU System Admin',
+    email: 'admin@lasu.edu.ng',
+    password: 'password123',
+    role: 'admin',
+    department: 'Computer Science',
+    faculty: 'Computing & Information Technology',
+    staffId: 'ADMIN/SYS/001',
+    avatarUrl: LECTURER_AVATAR,
+    hasLoggedInBefore: true,
+  },
+  {
     id: 'usr_dean_01',
     name: 'Prof. A. Chen',
     email: 'a.chen@lasu.edu.ng',
