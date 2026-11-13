@@ -40,3 +40,4 @@ select true, now(), id
 from auth.users where email = 'admin@lasu.edu.ng'
 on conflict (singleton) do update set
   auth_user_id = coalesce(public.super_admin_bootstrap_claims.auth_user_id, excluded.auth_user_id);
+
