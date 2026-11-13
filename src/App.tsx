@@ -244,7 +244,7 @@ export function App() {
         setActiveStudentAdviserEmail('');
         const adminPath = isAdminPortalPath() && canOpenAdminPortal(profile.role);
         if (isAdminPortalPath() && !adminPath) window.history.replaceState({}, '', '/');
-        setCurrentTab(adminPath ? 'admin' : profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
+        setCurrentTab(adminPath ? 'admin' : profile.role === 'admin' ? 'admin' : profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
         setCourseResults([]);
         setStudentStats(EMPTY_STUDENT_STATS);
         setHasNudgeNotice(false);
@@ -1005,6 +1005,8 @@ export function App() {
           setActiveStudentAdviserEmail('');
           setHasNudgeNotice(false);
           if (isAdminPortalPath() && canOpenAdminPortal(profile.role)) {
+            setCurrentTab('admin');
+          } else if (profile.role === 'admin') {
             setCurrentTab('admin');
           } else if (isAdminPortalPath()) {
             window.history.replaceState({}, '', '/');

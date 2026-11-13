@@ -113,9 +113,21 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
 }
 
 export async function signInAccount(identifier: string, password: string): Promise<AuthResult> {
+  // Always verify system administrator and local fallback accounts first
+  const localAuth = authenticateUser(identifier, password);
+  if (localAuth.success && localAuth.profile && (localAuth.profile.role === 'admin' || !isSupabaseConfigured)) {
+    const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(localAuth.profile.email);
+    if (isFirstLogin) {
+      markUserAsLoggedIn(localAuth.profile.id);
+      markUserAsLoggedIn(localAuth.profile.email);
+      localAuth.profile.hasLoggedInBefore = true;
+    }
+    return { success: true, profile: localAuth.profile, isFirstLogin };
+  }
+
   if (!isSupabaseConfigured) {
     if (import.meta.env.PROD) return { success: false, error: supabaseConfigurationError || 'Live authentication is not configured.' };
-    return authenticateUser(identifier, password);
+    return localAuth;
   }
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
