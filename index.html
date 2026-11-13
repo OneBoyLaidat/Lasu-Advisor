@@ -10,7 +10,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet" />
+    <style>
+      /* Keep ligature names from appearing as text while the icon font loads. */
+      .material-symbols-outlined {
+        display: inline-block;
+        width: 1em;
+        height: 1em;
+        overflow: hidden;
+        flex: 0 0 1em;
+        white-space: nowrap;
+        line-height: 1;
+      }
+    </style>
   </head>
   <body class="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 antialiased selection:bg-emerald-600 selection:text-white overflow-x-hidden min-h-screen">
     <div id="root"></div>

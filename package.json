@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node init && tsx server.ts",
-    "build": "node init && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "build:web": "node init && vite build",
-    "start": "node init && node dist/server.cjs",
+    "dev": "node prepare-temp-dir.mjs && tsx server.ts",
+    "build": "node prepare-temp-dir.mjs && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:web": "node prepare-temp-dir.mjs && vite build",
+    "start": "node prepare-temp-dir.mjs && node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

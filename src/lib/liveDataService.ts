@@ -19,7 +19,7 @@ const normalizeProfileRole = (role: string): UserRole | null => {
   return ['student', 'lecturer', 'hod', 'dean', 'admin'].includes(normalized) ? normalized as UserRole : null;
 };
 
-type StudentRow = { matric_no?: string | null; level?: string | null; admission_session?: string | null; avatar_url?: string | null; phone?: string | null; has_uploaded_transcript?: boolean | null; transcript_file_name?: string | null; result_prompt_dismissed_semester?: string | null };
+type StudentRow = { matric_no?: string | null; level?: string | null; admission_session?: string | null; avatar_url?: string | null; phone?: string | null; result_prompt_dismissed_semester?: string | null };
 type StaffProfileRow = { staff_id?: string | null; level?: string | null; admission_session?: string | null; avatar_url?: string | null; phone?: string | null; must_change_password?: boolean | null };
 
 const profileFromRow = (row: ProfileRow, details: StudentRow | StaffProfileRow = {}): UserProfile => ({
@@ -35,11 +35,13 @@ const profileFromRow = (row: ProfileRow, details: StudentRow | StaffProfileRow =
   admissionSession: details.admission_session || undefined,
   avatarUrl: details.avatar_url || '',
   phone: details.phone || undefined,
-  hasUploadedTranscript: 'has_uploaded_transcript' in details ? details.has_uploaded_transcript || false : false,
+  // Upload state and filename are derived from student_results, the canonical
+  // record, rather than duplicated on the student's profile row.
+  hasUploadedTranscript: false,
   resultPromptDismissedSemester: 'result_prompt_dismissed_semester' in details ? details.result_prompt_dismissed_semester || undefined : undefined,
-  transcriptFileName: 'transcript_file_name' in details ? details.transcript_file_name || undefined : undefined,
+  transcriptFileName: undefined,
   mustChangePassword: 'must_change_password' in details ? details.must_change_password || false : false,
-  hasLoggedInBefore: 'has_logged_in_before' in details ? Boolean((details as any).has_logged_in_before) : hasUserLoggedInBefore(row.user_id) || hasUserLoggedInBefore(row.email),
+  hasLoggedInBefore: hasUserLoggedInBefore(row.user_id) || hasUserLoggedInBefore(row.email),
 });
 
 const identityToRow = (profile: UserProfile) => ({
@@ -52,21 +54,17 @@ const identityToRow = (profile: UserProfile) => ({
 
 const detailsToRow = (profile: UserProfile) => profile.role === 'student' ? ({
   matric_no: profile.matricNo || null,
-  has_uploaded_transcript: profile.hasUploadedTranscript || false,
-  transcript_file_name: profile.transcriptFileName || null,
   result_prompt_dismissed_semester: profile.resultPromptDismissedSemester || null,
   level: profile.level || null,
   admission_session: profile.admissionSession || null,
   avatar_url: profile.avatarUrl || null,
   phone: profile.phone || null,
-  has_logged_in_before: profile.hasLoggedInBefore || false,
 }) : ({
   staff_id: profile.staffId || null,
   level: profile.level || null,
   admission_session: profile.admissionSession || null,
   avatar_url: profile.avatarUrl || null,
   phone: profile.phone || null,
-  has_logged_in_before: profile.hasLoggedInBefore || false,
 });
 
 async function getProfileForUser(user: User): Promise<UserProfile | null> {
@@ -85,6 +83,13 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
   // send an authenticated administrator back to the sign-in screen.
   if (detailsError) console.warn(`Could not load ${detailTable} details for the signed-in profile`, detailsError);
   const profile = profileFromRow({ ...identityRow, role }, details || {});
+  if (role === 'student') {
+    const { data: latestResult, error: resultError } = await client.from('student_results')
+      .select('file_name').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (resultError) throw resultError;
+    profile.hasUploadedTranscript = Boolean(latestResult);
+    profile.transcriptFileName = latestResult?.file_name || undefined;
+  }
   if (profile.role === 'student' && profile.admissionSession && profile.level) {
     const { data: assignment, error: assignmentError } = await client.from('adviser_assignments').select('adviser_id').eq('department', profile.department).eq('admission_session', profile.admissionSession).eq('level', profile.level).maybeSingle();
     if (assignmentError) throw assignmentError;
@@ -458,7 +463,7 @@ export async function loadLecturerConversations(userId: string): Promise<Student
   const studentIdsForDetails = (studentProfiles || []).map((student) => student.user_id);
   if (!studentIdsForDetails.length) return [];
   const { data: details, error: detailsError } = await client.from('students')
-    .select('user_id,matric_no,level,admission_session,has_uploaded_transcript').in('user_id', studentIdsForDetails);
+    .select('user_id,matric_no,level,admission_session').in('user_id', studentIdsForDetails);
   if (detailsError) throw detailsError;
   const detailById = new Map((details || []).map((row) => [row.user_id, row]));
   const students = (studentProfiles || []).flatMap((student) => {
@@ -511,7 +516,7 @@ export async function loadLecturerConversations(userId: string): Promise<Student
       avatarUrl: '',
       cgpa,
       status: (cgpa < 2.5 ? 'At Risk' : cgpa >= 3.5 ? 'Good Standing' : 'Average') as StudentConversation['status'],
-      hasUploadedResult: Boolean(student.has_uploaded_transcript),
+      hasUploadedResult: resultByStudent.has(student.user_id),
       lastMessage: latest?.text || '',
       lastMessageTime: latest?.timestamp || '',
       unreadCount: messages.filter((message) => message.sender === 'student' && !message.isRead).length,
