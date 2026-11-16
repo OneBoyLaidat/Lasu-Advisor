@@ -271,7 +271,7 @@ async function startServer() {
         role,
         department: department || 'Computer Science',
         faculty: faculty || 'Faculty of Computing & Information Technology',
-        level: level || '100 Level (1AD)',
+        level: level || '100 Level',
         hasPasswordAssigned: !!password,
       },
       registeredAt: new Date().toISOString(),

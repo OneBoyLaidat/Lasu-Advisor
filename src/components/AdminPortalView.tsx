@@ -64,7 +64,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [formRole, setFormRole] = useState<'lecturer' | 'hod' | 'dean'>('lecturer');
   const [formDept, setFormDept] = useState<string>(userProfile.department || 'Computer Science');
   const [formFaculty, setFormFaculty] = useState<string>(userProfile.faculty || 'Faculty of Computing & Information Technology');
-  const [formLevel, setFormLevel] = useState<string>('100 Level (1AD)');
+  const [formLevel, setFormLevel] = useState<string>('100 Level');
   const [formPhone, setFormPhone] = useState<string>('');
   const [formPassword, setFormPassword] = useState<string>(generateStaffPassword);
   
@@ -345,7 +345,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             </span>
             <span className="text-xs text-slate-400 dark:text-slate-500">•</span>
             <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-              {userProfile.department} • 1AD Oversight Management
+              {userProfile.department} • Oversight Management
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
@@ -398,7 +398,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       )}
 
       {/* Top Bento Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total Registered Staff</span>
@@ -415,35 +415,13 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">HOD assignments</span>
-            <span className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[18px]">corporate_fare</span>
-            </span>
-          </div>
-          <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{assignedDepartmentHodCount}/5</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Distinct department slots filled</p>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Lecturers &amp; Advisers (1AD)</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Lecturers &amp; Advisers</span>
             <span className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center">
               <span className="material-symbols-outlined text-[18px]">badge</span>
             </span>
           </div>
           <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{lecturerCount}</p>
           <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Registered lecturer accounts</p>
-        </div>
-
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Faculty Leadership</span>
-            <span className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 flex items-center justify-center">
-              <span className="material-symbols-outlined text-[18px]">verified</span>
-            </span>
-          </div>
-          <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{deanCount}</p>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">Executive Oversight</p>
         </div>
       </div>
 
@@ -478,43 +456,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           </div>
         ) : <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-xs text-slate-500 dark:bg-slate-800/50">No additional administrator accounts have been registered.</p>}
       </section>}
-
-      {/* Five department HOD assignments */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
-          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <span className="material-symbols-outlined text-emerald-600 text-[20px]">domain</span>
-            Department HOD assignments
-          </h2>
-          <span className="text-xs text-slate-500 dark:text-slate-400">One distinct HOD per department</span>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {LASU_DEPARTMENTS.map((department) => {
-            const assignedHod = departmentHods[department];
-            const candidates = staffList.filter((staff) => staff.role === 'hod');
-            return (
-              <div key={department} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 flex flex-col gap-3">
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{department}</h3>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${assignedHod ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'}`}>
-                    {assignedHod ? 'Assigned' : 'Vacant'}
-                  </span>
-                </div>
-                <p className="min-h-5 text-xs text-slate-500 dark:text-slate-400">{assignedHod?.name || 'No HOD assigned'}</p>
-                {isSystemAdmin ? <div className="flex gap-2">
-                  <select value={hodSelections[department] || ''} onChange={(event) => setHodSelections((current) => ({ ...current, [department]: event.target.value }))} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
-                    <option value="">Unassign HOD</option>
-                    {candidates.map((hod) => <option key={hod.id} value={hod.id}>{hod.name} · {hod.department}</option>)}
-                  </select>
-                  <button type="button" disabled={savingDepartment === department} onClick={() => void handleSaveDepartmentHod(department)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-60">
-                    {savingDepartment === department ? 'Saving…' : 'Save'}
-                  </button>
-                </div> : null}
-              </div>
-            );
-          })}
-        </div>
-      </div>
 
       {/* Staff Directory & Management Table */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xs">
@@ -567,7 +508,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 <th className="py-3 px-3">Staff member</th>
                 <th className="py-3 px-3">Staff ID &amp; Role</th>
                 <th className="py-3 px-3">Department</th>
-                <th className="py-3 px-3">Assigned 1AD Level</th>
+                <th className="py-3 px-3">Assigned Level</th>
                 <th className="py-3 px-3">Advisees</th>
                 <th className="py-3 px-3 text-right">Administrative Actions</th>
               </tr>
@@ -760,7 +701,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               </label>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Advising level
                 <select value={editForm.assignedLevel || ''} onChange={(e) => setEditForm({ ...editForm, assignedLevel: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-                  <option value="">No level assigned</option><option>100 Level (1AD)</option><option>200 Level (2AD)</option><option>300 Level (3AD)</option><option>400 Level (4AD)</option>
+                  <option value="">No level assigned</option><option>100 Level</option><option>200 Level</option><option>300 Level</option><option>400 Level</option>
                 </select>
               </label>
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Session
@@ -955,20 +896,20 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     </select>
                   </div>
 
-                  {/* Level Assignment (1AD structure) */}
+                  {/* Level Assignment */}
                   <div>
                     <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      1AD Level Cohort Assignment
+                      Level Cohort Assignment
                     </label>
                     <select
                       value={formLevel}
                       onChange={(e) => setFormLevel(e.target.value)}
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                     >
-                      <option value="100 Level (1AD)">100 Level (1AD)</option>
-                      <option value="200 Level (2AD)">200 Level (2AD)</option>
-                      <option value="300 Level (3AD)">300 Level (3AD)</option>
-                      <option value="400 Level (4AD)">400 Level (4AD)</option>
+                      <option value="100 Level">100 Level</option>
+                      <option value="200 Level">200 Level</option>
+                      <option value="300 Level">300 Level</option>
+                      <option value="400 Level">400 Level</option>
                       <option value="Departmental General">Departmental General</option>
                     </select>
                   </div>

@@ -493,10 +493,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-1">
                   <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                    Cohort &amp; 1AD Allocation
+                    Cohort Allocation
                   </span>
                   <p className="font-bold text-slate-900 dark:text-slate-100">
-                    {userProfile.level || '100 Level (1AD)'}
+                    {userProfile.level || '100 Level'}
                   </p>
                   <p className="text-[11px] text-slate-500">
                     Session: {userProfile.admissionSession || userProfile.session || '2026/2027'}
@@ -511,7 +511,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <ProfileMonogram name={userProfile.assignedAdviserName || ''} sizeClassName="w-10 h-10 text-xs" />
                     <div>
                       <span className="text-[10px] uppercase font-bold text-emerald-800 dark:text-emerald-300 block">
-                        Assigned Level Adviser (1AD)
+                        Assigned Level Adviser
                       </span>
                       <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
                         {userProfile.assignedAdviserName}

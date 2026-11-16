@@ -661,12 +661,12 @@ export function getStaffDirectory(): StaffMember[] {
   const staffAccounts = accounts.filter((acc) => acc.role !== 'student');
 
   return staffAccounts.map((acc, index) => {
-    // Map assigned level to 1AD convention if applicable
+    // Map assigned level to standard cohort format
     let displayLevel = acc.level;
-    if (acc.level === '100 Level' || acc.level === '100L') displayLevel = '100 Level (1AD)';
-    else if (acc.level === '200 Level' || acc.level === '200L') displayLevel = '200 Level (2AD)';
-    else if (acc.level === '300 Level' || acc.level === '300L') displayLevel = '300 Level (3AD)';
-    else if (acc.level === '400 Level' || acc.level === '400L') displayLevel = '400 Level (4AD)';
+    if (acc.level === '100 Level' || acc.level === '100L') displayLevel = '100 Level';
+    else if (acc.level === '200 Level' || acc.level === '200L') displayLevel = '200 Level';
+    else if (acc.level === '300 Level' || acc.level === '300L') displayLevel = '300 Level';
+    else if (acc.level === '400 Level' || acc.level === '400L') displayLevel = '400 Level';
 
     return {
       id: acc.id,

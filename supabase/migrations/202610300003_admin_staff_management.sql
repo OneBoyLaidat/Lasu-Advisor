@@ -1,5 +1,5 @@
 -- =========================================================================
--- LASU Advisor - Migration 202610300003: Admin Staff Management & 1AD Logic
+-- LASU Advisor - Migration 202610300003: Admin Staff Management & Adviser Logic
 -- Centralized administrative permissions for HODs, Faculty Deans, and Lecturers
 -- =========================================================================
 
@@ -43,7 +43,7 @@ using (
   or (user_id = auth.uid())
 );
 
--- 5. Enable HODs and Deans to manage cohort 1AD adviser assignments (insert, update, delete)
+-- 5. Enable HODs and Deans to manage cohort adviser assignments (insert, update, delete)
 drop policy if exists "hods and deans manage adviser assignments" on public.adviser_assignments;
 create policy "hods and deans manage adviser assignments" on public.adviser_assignments for all to authenticated
 using (

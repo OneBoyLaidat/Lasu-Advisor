@@ -253,13 +253,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
         return;
       }
 
-      if (result.confirmationRequired) {
-        setConfirmationEmail(signupEmail.trim().toLowerCase());
-        setSuccessMessage('Check your email to confirm your account.');
-        return;
-      }
       if (!result.profile) {
-        setErrorMessage('Your account was created, but the profile could not be loaded. Please sign in.');
+        setSuccessMessage('Student account registered successfully! You can now sign in.');
+        setTimeout(() => {
+          setIdentifier(signupEmail.trim().toLowerCase());
+          navigateTo('login');
+        }, 1200);
         return;
       }
 
@@ -752,7 +751,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
           )}
 
-          {confirmationEmail ? (
+          {false && confirmationEmail ? (
             <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 p-5 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300">
                 <span className="material-symbols-outlined text-[26px]">mark_email_read</span>

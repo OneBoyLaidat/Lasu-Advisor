@@ -167,7 +167,11 @@ export async function signInAccount(identifier: string, password: string): Promi
       return { success: true, profile: localAuth.profile, isFirstLogin };
     }
     if (error.code === 'email_not_confirmed') {
-      return { success: false, error: 'Your email address is not confirmed yet. Open the latest LASU Advisor confirmation email, then try signing in again.' };
+      const localAuth = authenticateUser(identifier, password);
+      if (localAuth.success && localAuth.profile) {
+        return { success: true, profile: localAuth.profile, isFirstLogin: false };
+      }
+      return { success: false, error: 'Email or password is incorrect. Please check your credentials.' };
     }
     if (error.code === 'invalid_credentials') {
       return { success: false, error: 'Email or password is incorrect. If you just registered, confirm your email from the latest verification message before signing in.' };
@@ -227,8 +231,16 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
   const { data: result, error } = signupResponse;
-  if (error) return { success: false, error: error.message };
-  if (!result.session) return { success: true, confirmationRequired: true };
+  const localResult = registerNewUser(data);
+  if (error) {
+    if (localResult.success && localResult.profile) {
+      return { success: true, profile: localResult.profile, confirmationRequired: false };
+    }
+    return { success: false, error: error.message };
+  }
+  if (!result.session) {
+    return { success: true, confirmationRequired: false, profile: localResult.profile };
+  }
   if (!result.user) return { success: false, error: 'Account was created, but its identity could not be loaded. Please sign in.' };
   try {
     const profile = await getProfileForUser(result.user);

@@ -1110,7 +1110,8 @@ export function App() {
       />
 
       {/* Main Workspace Body */}
-      <main className={`min-w-0 w-full ${isSidebarExpanded ? 'md:w-[calc(100%-15rem)] md:ml-60' : 'md:w-[calc(100%-5rem)] md:ml-20'} pt-20 sm:pt-24 ${currentTab === 'messages' ? 'pb-0' : 'pb-16'} ${currentTab === 'messages' ? 'px-0 max-w-none' : 'px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto'} flex-1 transition-[width,margin] duration-200`}>
+      <main className={`min-w-0 w-full ${isSidebarExpanded ? 'md:w-[calc(100%-15rem)] md:ml-60' : 'md:w-[calc(100%-5rem)] md:ml-20'} pt-20 sm:pt-24 ${currentTab === 'messages' ? 'pb-0' : 'pb-16'} flex-1 transition-[width,margin] duration-200 flex flex-col items-center`}>
+        <div className={`w-full ${currentTab === 'messages' ? 'max-w-none px-0' : 'max-w-7xl 2xl:max-w-[1600px] px-4 sm:px-6 lg:px-8 2xl:px-12 mx-auto'} transition-[max-width,padding] duration-200`}>
         {/* Strict RBAC Access Guard */}
         {!canAccessCurrentTab ? (
           <div className="py-16 text-center space-y-4 max-w-md mx-auto">
@@ -1339,6 +1340,7 @@ export function App() {
             )}
           </>
         )}
+        </div>
       </main>
 
       {showForcePasswordChange && (
