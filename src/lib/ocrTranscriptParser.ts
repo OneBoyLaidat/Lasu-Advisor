@@ -96,6 +96,32 @@ export async function renderPdfToHighResImage(file: File, scale: number = 2.5): 
  * Extracts readable text streams from an uploaded PDF File.
  * Also extracts high-resolution page image for OCR fallback.
  */
+/**
+ * Pure Free & Open-Source Client OCR Engine (Tesseract.js).
+ * Zero paid APIs, zero subscriptions, runs 100% locally in browser Web Worker.
+ */
+export async function runClientOcr(imageBase64: string): Promise<string> {
+  if (typeof window === 'undefined' || !imageBase64) return '';
+  try {
+    let tesseract: any = null;
+    try {
+      tesseract = await import('tesseract.js');
+    } catch {
+      // Dynamic fallback to ESM bundle
+      // @ts-ignore
+      tesseract = await import(/* @vite-ignore */ 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.esm.min.js');
+    }
+    if (!tesseract?.createWorker) return '';
+    const worker = await tesseract.createWorker('eng');
+    const { data } = await worker.recognize(`data:image/jpeg;base64,${imageBase64}`);
+    await worker.terminate();
+    return data.text || '';
+  } catch (err) {
+    console.warn('[LASU Advisor] Client-side open-source OCR note:', err);
+    return '';
+  }
+}
+
 export async function extractTextFromFile(file: File): Promise<{ text: string; highResImage?: string | null }> {
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
     throw new Error('Please upload a PDF result document.');
@@ -144,7 +170,13 @@ export async function extractTextFromFile(file: File): Promise<{ text: string; h
       pages.push(lines.map((line) => line.items.sort((a, b) => a.x - b.x).map((item) => item.text).join(' ')).join('\n'));
     }
 
-    const fullText = pages.join('\n\n').trim();
+    let fullText = pages.join('\n\n').trim();
+    if (!fullText && highResImage) {
+      const ocrResult = await runClientOcr(highResImage);
+      if (ocrResult && ocrResult.trim().length > 10) {
+        fullText = ocrResult.trim();
+      }
+    }
     return { text: fullText, highResImage };
   } finally {
     await pdfDocument.destroy();
@@ -171,11 +203,19 @@ export async function extractTextFromScannedPdf(
     binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length)));
   }
 
-  const payload: { pdfBase64: string; imageBase64?: string } = {
+  let clientExtractedText = '';
+  if (highResImageBase64) {
+    clientExtractedText = await runClientOcr(highResImageBase64);
+  }
+
+  const payload: { pdfBase64: string; imageBase64?: string; clientExtractedText?: string } = {
     pdfBase64: btoa(binary),
   };
   if (highResImageBase64) {
     payload.imageBase64 = highResImageBase64;
+  }
+  if (clientExtractedText) {
+    payload.clientExtractedText = clientExtractedText;
   }
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

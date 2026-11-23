@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Adviser, UserProfile, ChatMessage, ArchivedChatThread } from '../types';
-import { ADVISER_AVATAR } from '../data/mockData';
+import { ADVISER_AVATAR } from '../constants/assets';
 
 interface StudentMessagingViewProps {
   studentProfile: UserProfile;

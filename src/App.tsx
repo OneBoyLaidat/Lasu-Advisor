@@ -1,33 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  UserProfile,
-  UserRole,
-  StudentStats,
-  CourseResult,
-  Adviser,
-  Advisee,
-  AgendaItem,
-  CourseSuccessRate,
-  Appointment,
-  ChatMessage,
-  StudentConversation,
-  ArchivedChatThread,
-  NotificationItem,
-  AcademicAnalytics,
-  ThemeMode,
-} from './types';
-import {
-  INITIAL_USER_PROFILES,
-  INITIAL_STUDENT_STATS,
-  INITIAL_COURSE_RESULTS,
-  ADVISERS_LIST,
-  ADVISEES_LIST,
-  AGENDA_ITEMS,
-  COURSE_SUCCESS_RATES,
-  INITIAL_CHAT_MESSAGES,
-  INITIAL_CONVERSATIONS,
-  INITIAL_APPOINTMENTS,
-} from './data/mockData';
+import { DEFAULT_PROFILES } from './constants/defaultProfiles';
 
 // Component imports
 import { Sidebar } from './components/Sidebar';
@@ -155,15 +127,15 @@ export function App() {
   };
 
   // Data states
-  const [userProfile, setUserProfile] = useState<UserProfile>(INITIAL_USER_PROFILES.student);
+  const [userProfile, setUserProfile] = useState<UserProfile>(DEFAULT_PROFILES.student);
   const [studentStats, setStudentStats] = useState<StudentStats>(EMPTY_STUDENT_STATS);
   const [courseResults, setCourseResults] = useState<CourseResult[]>([]);
   const [academicAnalytics, setAcademicAnalytics] = useState<AcademicAnalytics | null>(null);
-  const [advisers, setAdvisers] = useState<Adviser[]>(ADVISERS_LIST);
-  const [advisees, setAdvisees] = useState<Advisee[]>(ADVISEES_LIST);
-  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>(AGENDA_ITEMS);
-  const [courseRates, setCourseRates] = useState<CourseSuccessRate[]>(COURSE_SUCCESS_RATES);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(INITIAL_CHAT_MESSAGES);
+  const [advisers, setAdvisers] = useState<Adviser[]>([]);
+  const [advisees, setAdvisees] = useState<Advisee[]>([]);
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
+  const [courseRates, setCourseRates] = useState<CourseSuccessRate[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [studentThreads, setStudentThreads] = useState<Record<string, ChatMessage[]>>(() =>
     !isSupabaseConfigured ? { 's.jenkins@lasu.edu.ng': INITIAL_CHAT_MESSAGES } : {}
   );
@@ -172,9 +144,9 @@ export function App() {
   const [activeStudentAdviserEmail, setActiveStudentAdviserEmail] = useState('');
   const [studentAdvisers, setStudentAdvisers] = useState<Adviser[]>([]);
   const [activeStaffContactEmail, setActiveStaffContactEmail] = useState('');
-  const [conversations, setConversations] = useState<StudentConversation[]>(INITIAL_CONVERSATIONS);
+  const [conversations, setConversations] = useState<StudentConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string>('conv_michael');
-  const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   // Force-change-password modal state (shown after first login for newly created staff)
@@ -363,9 +335,9 @@ export function App() {
     const contacts = userRole === 'hod'
       ? [
           ...advisers.filter((adviser) => adviser.department === userProfile.department).map((adviser) => ({ id: adviser.id, name: adviser.name, email: adviser.email, role: 'lecturer' as const, department: adviser.department, avatarUrl: adviser.avatarUrl })),
-          { id: INITIAL_USER_PROFILES.dean.id, name: INITIAL_USER_PROFILES.dean.name, email: INITIAL_USER_PROFILES.dean.email, role: 'dean' as const, department: INITIAL_USER_PROFILES.dean.department },
+          { id: DEFAULT_PROFILES.dean.id, name: DEFAULT_PROFILES.dean.name, email: DEFAULT_PROFILES.dean.email, role: 'dean' as const, department: DEFAULT_PROFILES.dean.department },
         ]
-      : [{ id: INITIAL_USER_PROFILES.hod.id, name: INITIAL_USER_PROFILES.hod.name, email: INITIAL_USER_PROFILES.hod.email, role: 'hod' as const, department: INITIAL_USER_PROFILES.hod.department }];
+      : [{ id: DEFAULT_PROFILES.hod.id, name: DEFAULT_PROFILES.hod.name, email: DEFAULT_PROFILES.hod.email, role: 'hod' as const, department: DEFAULT_PROFILES.hod.department }];
     setStaffMessageContacts(contacts);
   }, [isAuthenticated, userRole, userProfile.department, advisers]);
 
@@ -444,8 +416,8 @@ export function App() {
   // Sync profile & enforce RBAC when role changes
   const handleRoleChange = (newRole: UserRole) => {
     setUserRole(newRole);
-    if (INITIAL_USER_PROFILES[newRole]) {
-      setUserProfile(INITIAL_USER_PROFILES[newRole]);
+    if (DEFAULT_PROFILES[newRole]) {
+      setUserProfile(DEFAULT_PROFILES[newRole]);
     }
     // Set appropriate landing tab
     if (newRole === 'student') {
@@ -999,7 +971,7 @@ export function App() {
           setStudentStats(EMPTY_STUDENT_STATS);
           setStudentAdvisers([]);
           setNotifications([]);
-          setStudentThreads(!isSupabaseConfigured && profile.id === INITIAL_USER_PROFILES.student.id ? { 's.jenkins@lasu.edu.ng': INITIAL_CHAT_MESSAGES } : {});
+          setStudentThreads({});
           setStaffThreads({});
           setActiveStaffContactEmail('');
           setActiveStudentAdviserEmail('');
@@ -1217,7 +1189,7 @@ export function App() {
                   <StudentMessagingView
                     studentProfile={userProfile}
                     advisers={studentAdvisers}
-                    messages={studentThreads[activeStudentAdviserEmail] || (!isSupabaseConfigured && userProfile.id === INITIAL_USER_PROFILES.student.id && activeStudentAdviserEmail === userProfile.assignedAdviserEmail ? chatMessages : [])}
+                    messages={studentThreads[activeStudentAdviserEmail] || []}
                     threads={studentThreads}
                     selectedAdviserEmail={activeStudentAdviserEmail}
                     archivedThreads={userProfile.archivedChats || []}

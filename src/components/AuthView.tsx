@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { OFFICIAL_LOGO_URL } from '../data/mockData';
+import { OFFICIAL_LOGO_URL } from '../constants/assets';
 import { UserProfile, LASU_DEPARTMENTS, EntryMode } from '../types';
 import { getRegisteredAccounts } from '../lib/authService';
 import { resendSignupConfirmation, resetPasswordDirectly, sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';

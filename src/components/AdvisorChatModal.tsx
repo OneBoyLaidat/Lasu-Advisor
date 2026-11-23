@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ADVISER_AVATAR, STUDENT_AVATAR } from '../data/mockData';
+import { ADVISER_AVATAR, STUDENT_AVATAR } from '../constants/assets';
 import { ChatMessage, UserProfile } from '../types';
 
 interface AdvisorChatModalProps {

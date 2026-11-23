@@ -5,8 +5,7 @@ import {
   ADVISER_AVATAR,
   LECTURER_AVATAR,
   DEAN_AVATAR,
-  ADVISEES_LIST,
-} from '../data/mockData';
+} from '../constants/assets';
 
 export interface RegisteredAccount {
   id: string;

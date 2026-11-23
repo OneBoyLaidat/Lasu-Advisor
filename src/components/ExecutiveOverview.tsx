@@ -1,8 +1,49 @@
 import React, { useState } from 'react';
-import {
-  DEPARTMENT_PERFORMANCE_LIST,
-  FACULTY_PERFORMANCE_LIST,
-} from '../data/mockData';
+import { DepartmentPerformance, FacultyPerformance, LASU_DEPARTMENTS } from '../types';
+
+const FACULTY_PERFORMANCE_LIST: FacultyPerformance[] = [
+  {
+    faculty: 'Faculty of Computing & Information Technology',
+    dean: 'Prof. A. Chen',
+    studentCount: 3790,
+    targetVariance: '+3.8%',
+    isPositiveVariance: true,
+    status: 'Exceeding',
+    icon: 'devices',
+    bgColor: 'bg-emerald-50 dark:bg-emerald-950/40',
+    textColor: 'text-emerald-700 dark:text-emerald-400',
+  },
+  {
+    faculty: 'Faculty of Science',
+    dean: 'Prof. M. Reynolds',
+    studentCount: 4200,
+    targetVariance: '+2.1%',
+    isPositiveVariance: true,
+    status: 'On Track',
+    icon: 'science',
+    bgColor: 'bg-blue-50 dark:bg-blue-950/40',
+    textColor: 'text-blue-700 dark:text-blue-400',
+  },
+  {
+    faculty: 'Faculty of Management Sciences',
+    dean: 'Dr. S. Williams',
+    studentCount: 3100,
+    targetVariance: '+1.4%',
+    isPositiveVariance: true,
+    status: 'On Track',
+    icon: 'account_balance',
+    bgColor: 'bg-amber-50 dark:bg-amber-950/40',
+    textColor: 'text-amber-700 dark:text-amber-400',
+  },
+];
+
+const DEPARTMENT_PERFORMANCE_LIST: DepartmentPerformance[] = LASU_DEPARTMENTS.map((dept, idx) => ({
+  department: dept,
+  hod: idx === 0 ? 'Dr. Funke Oladipo' : idx === 1 ? 'Dr. Olumide Johnson' : idx === 2 ? 'Dr. Amina Bello' : idx === 3 ? 'Prof. Emmanuel Adebayo' : 'Dr. James Miller',
+  avgCgpa: idx === 0 ? 3.84 : idx === 1 ? 3.65 : idx === 2 ? 3.78 : idx === 3 ? 3.55 : 3.62,
+  studentCount: 600 + (idx * 95),
+  faculty: 'Faculty of Computing & Information Technology',
+}));
 
 interface ExecutiveOverviewProps {
   onOpenExportReportModal: () => void;
