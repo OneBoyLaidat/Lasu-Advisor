@@ -9,3 +9,4 @@ export default function handler(_req: VercelRequest, res: VercelResponse) {
     timestamp: new Date().toISOString(),
   });
 }
+

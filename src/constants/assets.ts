@@ -20,3 +20,4 @@ export const LECTURER_AVATAR =
 
 export const SARAH_CONNOR_AVATAR =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuDNME1CIt5HNCsQvNSZ5fGKYyWrRc2PrhSeP43TAuH01P7yRSv2QfB_JDpTb2HUlKzhhU9n8kj_u5J0NO0unz5QhasbgtRBvhikVwjaWrmYk_ELV8TE--F9VFtRM3ryvqvJyCQoPTpE4k9wqLOZ3L3Wt0jdks8fiQTyP9pbpHTfSdZze7GZ_5NXurRl0HzKewPj_Y_xe1FeK1nUi31Hqir-AZIvy5hAKjZVhfmyBdDxTLxrExzSRp8';
+

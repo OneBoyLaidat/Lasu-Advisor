@@ -66,3 +66,4 @@ export const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
     hasLoggedInBefore: true,
   },
 };
+
