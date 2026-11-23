@@ -12,7 +12,7 @@ import {
 } from '../lib/academicUtils';
 import confetti from 'canvas-confetti';
 
-export type AuthPageMode = 'login' | 'register-select' | 'register-student' | 'register-staff';
+export type AuthPageMode = 'login' | 'register-select' | 'register-student';
 
 interface AuthViewProps {
   onLoginSuccess: (profile: UserProfile, isFirstLogin?: boolean) => void;
@@ -33,7 +33,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       const hash = window.location.hash.toLowerCase().replace('#', '');
       if (hash === 'register' || hash === 'create-account') return 'register-select';
       if (hash === 'register-student' || hash === 'student-signup') return 'register-student';
-      if (hash === 'register-staff' || hash === 'staff-signup') return 'register-staff';
+      if (hash === 'register-staff' || hash === 'staff-signup') return 'login';
       if (hash === 'login' || hash === 'signin') return 'login';
     }
     return initialPage;
@@ -55,7 +55,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
       const hash = window.location.hash.toLowerCase().replace('#', '');
       if (hash === 'register' || hash === 'create-account') setCurrentPage('register-select');
       else if (hash === 'register-student' || hash === 'student-signup') setCurrentPage('register-student');
-      else if (hash === 'register-staff' || hash === 'staff-signup') setCurrentPage('register-staff');
+      else if (hash === 'register-staff' || hash === 'staff-signup') setCurrentPage('login');
       else if (hash === 'login' || hash === 'signin' || !hash) setCurrentPage('login');
     };
 
@@ -73,16 +73,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [entryMode, setEntryMode] = useState<EntryMode>('utme');
   const [admissionSession, setAdmissionSession] = useState<string>(STANDARD_ACADEMIC_SESSIONS[0] || '2026/2027');
   const [studentLevel, setStudentLevel] = useState<string>('100 Level');
-
-  // Staff Registration fields
-  const [staffName, setStaffName] = useState<string>('');
-  const [staffId, setStaffId] = useState<string>('');
-  const [staffRole, setStaffRole] = useState<'lecturer' | 'hod' | 'dean'>('lecturer');
-  const [department, setDepartment] = useState<string>(LASU_DEPARTMENTS[4] || 'Computer Science');
-  const [faculty, setFaculty] = useState<string>('Faculty of Computing & Information Technology');
-  const [signupEmail, setSignupEmail] = useState<string>('');
-  const [signupPassword, setSignupPassword] = useState<string>('');
-  const [confirmSignupPassword, setConfirmSignupPassword] = useState<string>('');
 
   // Status & Feedback
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -281,48 +271,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   };
 
-  // 3. Staff Registration Handler
-  const handleStaffSignupSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setIsLoading(true);
-
-    try {
-      const result = await signUpAccount({
-        name: staffName,
-        email: signupEmail,
-        password: signupPassword,
-        role: staffRole,
-        department,
-        faculty,
-        staffId: staffId,
-      });
-
-      if (!result.success || !result.profile) {
-        setErrorMessage(result.error || 'Staff registration failed. Please verify your submitted details.');
-        return;
-      }
-
-      setSuccessMessage(`Staff account registered as ${staffRole.toUpperCase()}! Redirecting to institutional portal...`);
-      try {
-        confetti({
-          particleCount: 50,
-          spread: 60,
-          origin: { y: 0.8 },
-        });
-      } catch (err) {
-        // ignore
-      }
-
-      onLoginSuccess(result.profile, true);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Staff registration failed.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const registeredAccounts = getRegisteredAccounts();
   const currentAcademicSession = getCurrentAcademicSession();
 
@@ -496,18 +444,9 @@ export const AuthView: React.FC<AuthViewProps> = ({
               Create a student account
               <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
             </a>
-            <div className="mt-3 flex items-center justify-center gap-3 text-[11px] text-slate-400 dark:text-slate-500">
-              {!isSupabaseConfigured && <><span>•</span><a
-                href="#register-staff"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigateTo('register-staff');
-                }}
-                className="hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1"
-              >
-                <span className="material-symbols-outlined text-[14px]">badge</span>
-                Staff Registration
-              </a></>}
+            <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+              <span className="material-symbols-outlined text-[14px] text-emerald-600 dark:text-emerald-400">shield_person</span>
+              <span>Staff &amp; Faculty accounts are provisioned by Administrators</span>
             </div>
           </div>
 
@@ -637,36 +576,31 @@ export const AuthView: React.FC<AuthViewProps> = ({
               </div>
             </div>
 
-            {/* Staff & Faculty Portal Card */}
-            {!isSupabaseConfigured && <>
-            <div className="p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 hover:border-emerald-500 dark:hover:border-emerald-500 transition-all flex flex-col justify-between group">
+            {/* Staff & Faculty Portal Card (Admin Provisioned Only) */}
+            <div className="p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 flex flex-col justify-between opacity-95">
               <div>
-                <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 flex items-center justify-center mb-3">
+                <div className="w-12 h-12 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center mb-3">
                   <span className="material-symbols-outlined text-[28px]">badge</span>
                 </div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                  Staff &amp; Faculty Registration
-                </h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                    Staff &amp; Faculty Onboarding
+                  </h3>
+                  <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    Admin Only
+                  </span>
+                </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-                  For Lecturers (Level Advisers), Heads of Department (HODs), and Deans of Faculty.
+                  Lecturer, Level Adviser, HOD, and Dean accounts are provisioned exclusively by authenticated Administrators within the management dashboard.
                 </p>
               </div>
               <div className="mt-5 pt-3 border-t border-slate-200 dark:border-slate-700">
-                <a
-                  href="#register-staff"
-                  id="link-to-staff-registration"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigateTo('register-staff');
-                  }}
-                  className="w-full inline-flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold transition-all shadow-xs"
-                >
-                  <span>Proceed to Staff Registration</span>
-                  <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-                </a>
+                <div className="w-full inline-flex items-center justify-center gap-1.5 py-2 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-xs font-medium">
+                  <span className="material-symbols-outlined text-[15px]">lock</span>
+                  <span>Provisioned via Admin Portal</span>
+                </div>
               </div>
             </div>
-            </>}
           </div>
 
           {/* Return to Login link */}
@@ -1011,242 +945,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 Sign In
               </a>
             </div>
-            <div>
-              Staff member?{' '}
-              {!isSupabaseConfigured ? <a
-                href="#register-staff"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigateTo('register-staff');
-                }}
-                className="text-slate-700 dark:text-slate-300 font-semibold hover:underline"
-              >
-                Staff Registration →
-              </a> : <span className="font-medium text-slate-500">Staff accounts are issued by your faculty administrator.</span>}
+            <div className="text-slate-500 dark:text-slate-400 text-center sm:text-right">
+              Staff accounts are issued exclusively by institutional administrators.
             </div>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* PAGE 4: DEDICATED STAFF & FACULTY REGISTRATION PAGE                       */}
-      {/* ========================================================================= */}
-      {currentPage === 'register-staff' && (
-        <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 shadow-xl relative z-10 border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-300">
-          {/* Breadcrumb Navigation */}
-          <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100 dark:border-slate-800 text-xs">
-            <a
-              href="#login" onClick={(e) => { e.preventDefault(); navigateTo('login'); }} className="text-slate-500 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium inline-flex items-center gap-1 cursor-pointer transition-colors"
-            >
-              <span className="material-symbols-outlined text-[16px]">arrow_back</span>Back to Login
-            </a>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-              Staff Registration
-            </span>
-          </div>
-
-          {/* Header */}
-          <div className="flex items-center gap-3 mb-5">
-            <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center border border-blue-200 dark:border-blue-800 shrink-0">
-              <span className="material-symbols-outlined text-[24px]">badge</span>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-                Academic Staff Registration
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Register as Level Adviser, Head of Department, or Dean of Faculty
-              </p>
-            </div>
-          </div>
-
-          {/* Feedback Banners */}
-          {errorMessage && (
-            <div className="mb-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80 text-rose-800 dark:text-rose-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
-              <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0 mt-0.5">
-                error
-              </span>
-              <div className="leading-snug">{errorMessage}</div>
-            </div>
-          )}
-
-          {successMessage && (
-            <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs flex items-start gap-2.5 animate-in fade-in duration-200">
-              <span className="material-symbols-outlined text-[18px] text-emerald-600 shrink-0 mt-0.5">
-                check_circle
-              </span>
-              <div className="leading-snug">{successMessage}</div>
-            </div>
-          )}
-
-          {/* Staff Form */}
-          <form onSubmit={handleStaffSignupSubmit} className="space-y-3.5">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Full Name &amp; Academic Title
-              </label>
-              <input
-                id="staff-name-input"
-                type="text"
-                required
-                value={staffName}
-                onChange={(e) => setStaffName(e.target.value)}
-                placeholder="e.g. Dr. Sarah Jenkins"
-                className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 shadow-2xs"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Staff ID Number
-                </label>
-                <input
-                  id="staff-id-input"
-                  type="text"
-                  required
-                  value={staffId}
-                  onChange={(e) => setStaffId(e.target.value)}
-                  placeholder="e.g. STAFF/CSC/088"
-                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 shadow-2xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Institutional Position / Role
-                </label>
-                <div className="relative">
-                  <select
-                    id="staff-role-select"
-                    value={staffRole}
-                    onChange={(e) => setStaffRole(e.target.value as 'lecturer' | 'hod' | 'dean')}
-                    className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-600 shadow-2xs appearance-none cursor-pointer"
-                  >
-                    <option value="lecturer">Lecturer (Level Adviser)</option>
-                    <option value="hod">Head of Department (HOD)</option>
-                    <option value="dean">Dean of Faculty</option>
-                  </select>
-                  <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[18px]">
-                    expand_more
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Department
-              </label>
-              <div className="relative">
-                <select
-                  id="staff-department-select"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-600 shadow-2xs appearance-none cursor-pointer"
-                >
-                  {LASU_DEPARTMENTS.map((dept) => (
-                    <option key={dept} value={dept} className="dark:bg-slate-800">
-                      {dept}
-                    </option>
-                  ))}
-                </select>
-                <span className="material-symbols-outlined absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-[18px]">
-                  expand_more
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Institutional Email Address
-                </label>
-                <input
-                  id="staff-email-input"
-                  type="email"
-                  required
-                  value={signupEmail}
-                  onChange={(e) => setSignupEmail(e.target.value)}
-                  placeholder="s.jenkins@lasu.edu.ng"
-                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 shadow-2xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Create Password
-                </label>
-                <input
-                  id="staff-password-input"
-                  type="password"
-                  required
-                  value={signupPassword}
-                  onChange={(e) => setSignupPassword(e.target.value)}
-                  placeholder="Min. 5 characters"
-                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-600 shadow-2xs"
-                />
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 text-[11px] text-slate-500 dark:text-slate-400 flex items-start gap-2">
-              <span className="material-symbols-outlined text-[16px] text-amber-500 shrink-0 mt-0.5">
-                verified_user
-              </span>
-              <span>
-                Staff permissions and advising rosters will be configured according to your chosen role (<strong>{staffRole.toUpperCase()}</strong>).
-              </span>
-            </div>
-
-            <button
-              id="submit-staff-signup-btn"
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-3 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {isLoading ? (
-                <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>
-              ) : (
-                <>
-                  <span>Complete Staff Registration</span>
-                  <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Navigation Links */}
-          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
-            <div>
-              Already have an account?{' '}
-              <a
-                href="#login"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigateTo('login');
-                }}
-                className="text-blue-600 dark:text-blue-400 font-bold hover:underline"
-              >
-                Sign In
-              </a>
-            </div>
-            <div>
-              Are you a student?{' '}
-              <a
-                href="#register-student"
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigateTo('register-student');
-                }}
-                className="text-slate-700 dark:text-slate-300 font-semibold hover:underline"
-              >
-                Student Registration →
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
-    
       {/* ========================================================================= */}
       {/* RESET PASSWORD / PASSPORT RECOVERY MODAL (STUDENTS & STAFF)               */}
       {/* ========================================================================= */}

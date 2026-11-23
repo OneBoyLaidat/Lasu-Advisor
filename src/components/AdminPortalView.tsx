@@ -31,7 +31,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   onNavigateToTab,
 }) => {
   const isSystemAdmin = userRole === 'admin';
-  const canManageStaff = isSystemAdmin || userRole === 'dean' || !isSupabaseConfigured;
+  const canManageStaff = isSystemAdmin;
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [administratorList, setAdministratorList] = useState<AdministratorProfile[]>([]);
   const [departmentHods, setDepartmentHods] = useState<Record<string, StaffMember>>({});
@@ -134,6 +134,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const handleManualRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setModalError(null);
+    if (!isSystemAdmin) {
+      setModalError('Only an authenticated administrator can register staff accounts.');
+      return;
+    }
     setIsSubmitting(true);
 
     try {

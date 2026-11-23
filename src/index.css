@@ -223,11 +223,34 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   background: #4b5563;
 }
 
+/* Stable icon sizing & flicker-free font containment */
 .material-symbols-outlined {
+  font-family: 'Material Symbols Outlined' !important;
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  font-size: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  inline-size: 1em;
+  block-size: 1em;
+  min-inline-size: 1em;
+  min-block-size: 1em;
+  max-inline-size: 1em;
+  max-block-size: 1em;
+  overflow: hidden;
+  flex: 0 0 1em;
+  line-height: 1;
+  box-sizing: border-box;
+  aspect-ratio: 1;
 }
 
 .material-symbols-outlined.fill {
   font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Prevent Google Fonts stylesheet from resetting icon sizes to 24px */
+:where(.material-symbols-outlined) {
+  font-size: inherit;
 }
 

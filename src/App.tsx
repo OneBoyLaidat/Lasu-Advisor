@@ -207,6 +207,10 @@ export function App() {
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let active = true;
+    const authTimeout = setTimeout(() => {
+      if (active) setIsAuthInitializing(false);
+    }, 3500);
+
     getCurrentProfile().then((profile) => {
       if (!active) return;
       if (profile) {
@@ -225,9 +229,13 @@ export function App() {
     }).catch((error) => {
       console.error('Could not restore Supabase session', error);
     }).finally(() => {
+      clearTimeout(authTimeout);
       if (active) setIsAuthInitializing(false);
     });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      clearTimeout(authTimeout);
+    };
   }, []);
 
   useEffect(() => {
