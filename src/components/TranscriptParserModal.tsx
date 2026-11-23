@@ -57,20 +57,41 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
     setIsScanning(true);
     setValidationError(null);
     setParsedData(null);
-    setScanStep('Reading PDF pages and extracting transcript text...');
+    setScanStep('Rendering high-resolution document pages (300 DPI)...');
+
     try {
-      let extractedText = await extractTextFromFile(file);
-      if (!extractedText) {
+      const { text: extractedText, highResImage } = await extractTextFromFile(file);
+
+      let result: ParsedTranscriptData | null = null;
+
+      if (extractedText && extractedText.length > 20) {
+        setScanStep('Parsing extracted transcript tables & course codes...');
+        result = parseTranscriptText(extractedText, file.name);
+      }
+
+      // If no text streams or courses found, invoke high-resolution OCR
+      if (!result || result.courses.length === 0) {
+        setScanStep('Image/scanned format detected. Running high-precision optical character analysis...');
         const token = await getAccessToken();
-        if (token) {
-          setScanStep('This PDF is scanned. Running secure document OCR...');
-          extractedText = await extractTextFromScannedPdf(file, token);
+        const ocrResult = await extractTextFromScannedPdf(file, token || undefined, highResImage);
+
+        if (ocrResult.structuredData && ocrResult.structuredData.courses?.length > 0) {
+          result = mapStructuredDataToTranscript(ocrResult.structuredData, file.name, ocrResult.text);
+        } else if (ocrResult.text) {
+          result = parseTranscriptText(ocrResult.text, file.name);
         }
       }
-      const result = parseTranscriptText(extractedText, file.name);
+
+      if (!result || result.courses.length === 0) {
+        result = parseTranscriptText(extractedText || '', file.name);
+      }
+
       setParsedData(result);
       setActiveTab('extracted');
-      if (!extractedText) setValidationError('No readable text was found. Sign in to use scanned-PDF OCR, upload a clearer PDF, or enter course records manually.');
+
+      if (!result || result.courses.length === 0) {
+        setValidationError('No course records could be detected from this PDF. Please check that it is a valid result slip or enter your courses manually.');
+      }
     } catch (error) {
       setValidationError(error instanceof Error ? error.message : 'Could not read this PDF. Please try another file.');
     } finally {
