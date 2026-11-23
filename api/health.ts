@@ -1,4 +1,11 @@
-export default function handler(_req: any, res: any) {
+import type { IncomingMessage, ServerResponse } from 'http';
+
+type VercelResponse = ServerResponse & {
+  status: (statusCode: number) => VercelResponse;
+  json: (body: unknown) => VercelResponse;
+};
+
+export default function handler(_req: IncomingMessage, res: VercelResponse) {
   res.status(200).json({
     status: 'healthy',
     system: 'LASU Advisor Academic Advising & CGPA Audit Portal',
@@ -7,3 +14,4 @@ export default function handler(_req: any, res: any) {
     timestamp: new Date().toISOString(),
   });
 }
+
