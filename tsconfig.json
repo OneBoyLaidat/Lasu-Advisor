@@ -23,5 +23,7 @@
     "types": ["vite/client", "node"],
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["src"],
+  "exclude": ["api", "scratch", "dist", "node_modules", "netlify"]
 }
