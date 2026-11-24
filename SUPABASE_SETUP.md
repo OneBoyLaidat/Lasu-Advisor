@@ -31,7 +31,7 @@ Restart the dev server after editing `.env`. Local development falls back to dem
 
 ## 3. Apply the database schema
 
-Apply pending migration files in timestamp order. For a database that already has the schema through `20261124013251_normalize_transcript_courses_and_policy_scopes.sql`, also apply `20261124025000_admin_sessions_and_identity_constraints.sql`. Migration 007 backfills student/staff records before dropping role-specific columns from `profiles`; shared identity and access role stay in `profiles`. The latest migration adds canonical active-session storage, an Admin-only session-advance RPC, case/whitespace-insensitive unique indexes, and realtime publication membership for portal directory tables.
+Apply pending migration files in timestamp order. For a database that already has the schema through `20261124013251_normalize_transcript_courses_and_policy_scopes.sql`, also apply `20261124110954_admin_sessions_and_identity_constraints.sql` and `20261124114454_schema_advisor_tuning.sql`. Migration 007 backfills student/staff records before dropping role-specific columns from `profiles`; shared identity and access role stay in `profiles`. The session migration adds canonical active-session storage, an Admin-only session-advance RPC, case/whitespace-insensitive unique indexes, and realtime publication membership for portal directory tables. The tuning migration adds the missing audit-user FK index and narrows helper function execution grants to authenticated users where client access is needed.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|
