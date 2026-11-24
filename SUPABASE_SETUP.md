@@ -17,13 +17,12 @@ Create a root-level `.env` beside `package.json` for local development (copy `.e
 ```dotenv
 VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY
-GEMINI_API_KEY=YOUR_SERVER_SIDE_GEMINI_KEY
 APP_URL=http://localhost:3000
 ```
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the frontend host's build/runtime environment too. They are read in `src/lib/supabaseClient.ts`; the Vite `VITE_` prefix means they are public browser configuration. The anon key is safe to expose only because RLS is enabled. **Never put a Supabase service-role/secret key in a `VITE_` variable or browser code.** On Netlify, configure these variables for the build and redeploy after changing them. For scanned-PDF OCR, add `GEMINI_API_KEY` in Netlify's function environment.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the frontend host's build/runtime environment too. They are read in `src/lib/supabaseClient.ts`; the Vite `VITE_` prefix means they are public browser configuration. The anon key is safe to expose only because RLS is enabled. **Never put a Supabase service-role/secret key in a `VITE_` variable or browser code.** On Netlify, configure these variables for the build and redeploy after changing them.
 
-`GEMINI_API_KEY` is server-only and is used by `/api/ocr/transcript` in `server.ts` locally and `netlify/functions/ocr-transcript.mjs` on Netlify when a PDF has no extractable text. Never prefix it with `VITE_`. Scanned PDFs sent through the Netlify function must be 4 MB or smaller because the function request includes base64 expansion. It is not needed for ordinary text-based PDFs. `APP_URL` is for deployment configuration and is not used by the browser Supabase client.
+Transcript recognition uses PDF.js and Tesseract.js in the browser. OCR runs locally with the open-source English model, worker, and WebAssembly core shipped as static assets; no transcript content or OCR request is sent to a paid or proprietary recognition service. `APP_URL` is for deployment configuration and is not used by the browser Supabase client.
 
 For Netlify staff provisioning, also set these **function environment variables** in Site configuration → Environment variables: `SUPABASE_URL` (the Project URL), `SUPABASE_ANON_KEY` (the anon/publishable key), and `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role/secret key). These are read only by the server-side staff/admin provisioning and password functions under `netlify/functions/`. Keep the service role key server-side; never add a `VITE_` prefix. Netlify's live environment is outside this repository, so verify this key is configured in the Netlify UI. Functions fail with a configuration error if it is missing; a successful admin operation confirms it can access Supabase Auth and Postgres. Deploy after setting the variables.
 

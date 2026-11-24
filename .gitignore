@@ -4,3 +4,5 @@ temp_interactive_push.bat
 config.bat
 node_modules
 scratch/
+public/ocr/worker.min.js
+public/ocr/tesseract-core.wasm.js

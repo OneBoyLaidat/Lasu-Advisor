@@ -3,6 +3,6 @@
   "description": "Academic Performance Tracker & Advising Enterprise for Lagos State University (LASU). Features OCR PDF transcript parsing with auto-populated grade points, Level Adviser missing-result tracking with one-click nudges, student dashboards, and strict institutional RBAC.",
   "requestFramePermissions": [],
   "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+    "MAJOR_CAPABILITY_LOCAL_OPEN_SOURCE_OCR"
   ]
 }

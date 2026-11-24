@@ -8,7 +8,7 @@ An academic performance tracker and advising enterprise platform tailored for La
 
 ### 1. 🎓 Student Academic Dashboard
 - **Cumulative & Semester CGPA Tracking**: Real-time metric computations against official NUC 5.0 grade points.
-- **Transcript & Result OCR Scanner**: Automatic extraction and parsing of official LASU portal result slips and PDF transcripts.
+- **Transcript & Result OCR Scanner**: PDF.js and local Tesseract.js extract text and scan pages in the browser; students review detected results before they are saved to Supabase.
 - **Advising & Appointment Booking**: Direct booking system with designated departmental Level Advisers.
 - **Academic Progress Ring**: Visual breakdown of completed units, registered credits, and carryover flags.
 

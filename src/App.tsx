@@ -1,5 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { DEFAULT_PROFILES } from './constants/defaultProfiles';
+import {
+  INITIAL_CHAT_MESSAGES,
+  INITIAL_COURSE_RESULTS,
+  INITIAL_STUDENT_STATS,
+  INITIAL_USER_PROFILES,
+} from './data/mockData';
+import type {
+  AcademicAnalytics,
+  Adviser,
+  Advisee,
+  AgendaItem,
+  Appointment,
+  ArchivedChatThread,
+  ChatMessage,
+  CourseResult,
+  CourseSuccessRate,
+  NotificationItem,
+  StudentConversation,
+  StudentStats,
+  ThemeMode,
+  UserProfile,
+  UserRole,
+} from './types';
 
 // Component imports
 import { Sidebar } from './components/Sidebar';
@@ -1064,10 +1087,10 @@ export function App() {
         isExpanded={isSidebarExpanded}
         onHoverChange={setIsSidebarExpanded}
         unreadMessagesCount={userRole === 'student'
-          ? Object.values(studentThreads).reduce((count, thread) => count + thread.filter((message) => message.sender === 'adviser' && !message.isRead).length, 0)
+          ? (Object.values(studentThreads) as ChatMessage[][]).reduce((count, thread) => count + thread.filter((message) => message.sender === 'adviser' && !message.isRead).length, 0)
           : userRole === 'lecturer'
             ? advisorCohortConversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0)
-            : Object.values(staffThreads).reduce((count, thread) => count + thread.filter((message) => message.sender !== 'adviser' && !message.isRead).length, 0)}
+            : (Object.values(staffThreads) as ChatMessage[][]).reduce((count, thread) => count + thread.filter((message) => message.sender !== 'adviser' && !message.isRead).length, 0)}
       />
 
       {/* Top Header Bar */}

@@ -7,9 +7,8 @@ import {
   getDegreeClass,
   parseTranscriptText,
   extractTextFromFile,
-  extractTextFromScannedPdf,
+  runClientOcrOnPdf,
 } from '../lib/ocrTranscriptParser';
-import { getAccessToken } from '../lib/liveDataService';
 
 interface TranscriptParserModalProps {
   isOpen: boolean;
@@ -60,7 +59,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
     setScanStep('Rendering high-resolution document pages (300 DPI)...');
 
     try {
-      const { text: extractedText, highResImage } = await extractTextFromFile(file);
+      const { text: extractedText } = await extractTextFromFile(file);
 
       let result: ParsedTranscriptData | null = null;
 
@@ -69,17 +68,13 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
         result = parseTranscriptText(extractedText, file.name);
       }
 
-      // If no text streams or courses found, invoke high-resolution OCR
+      // Scanned pages have no embedded text, so OCR the complete PDF locally.
       if (!result || result.courses.length === 0) {
-        setScanStep('Image/scanned format detected. Running high-precision optical character analysis...');
-        const token = await getAccessToken();
-        const ocrResult = await extractTextFromScannedPdf(file, token || undefined, highResImage);
-
-        if (ocrResult.structuredData && ocrResult.structuredData.courses?.length > 0) {
-          result = mapStructuredDataToTranscript(ocrResult.structuredData, file.name, ocrResult.text);
-        } else if (ocrResult.text) {
-          result = parseTranscriptText(ocrResult.text, file.name);
-        }
+        setScanStep('Scanned page detected. Running local open-source Tesseract OCR...');
+        const ocrText = await runClientOcrOnPdf(file, (page, total) => {
+          setScanStep(`Recognizing page ${page} of ${total} on this device...`);
+        });
+        result = parseTranscriptText([extractedText, ocrText].filter(Boolean).join('\n\n'), file.name);
       }
 
       if (!result || result.courses.length === 0) {

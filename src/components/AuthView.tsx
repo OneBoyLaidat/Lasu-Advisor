@@ -70,6 +70,11 @@ export const AuthView: React.FC<AuthViewProps> = ({
   // Student Registration fields
   const [fullName, setFullName] = useState<string>('');
   const [matricNumber, setMatricNumber] = useState<string>('');
+  const [department, setDepartment] = useState<string>(LASU_DEPARTMENTS[4] || 'Computer Science');
+  const [faculty, setFaculty] = useState<string>('Faculty of Computing & Information Technology');
+  const [signupEmail, setSignupEmail] = useState<string>('');
+  const [signupPassword, setSignupPassword] = useState<string>('');
+  const [confirmSignupPassword, setConfirmSignupPassword] = useState<string>('');
   const [entryMode, setEntryMode] = useState<EntryMode>('utme');
   const [admissionSession, setAdmissionSession] = useState<string>(STANDARD_ACADEMIC_SESSIONS[0] || '2026/2027');
   const [studentLevel, setStudentLevel] = useState<string>('100 Level');
