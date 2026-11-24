@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload, LASU_DEPARTMENTS } from '../types';
-import { loadStaffDirectory, loadAdministrators, registerAdministratorAccount, updateAdministratorProfile, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, revokeStaffAccess, StaffProfileUpdate, AdministratorProfileUpdate } from '../lib/liveDataService';
-import { isSupabaseConfigured } from '../lib/supabaseClient';
+import { loadStaffDirectory, loadAdministrators, registerAdministratorAccount, updateAdministratorProfile, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, revokeStaffAccess, loadActiveAcademicSession, startNewAcademicSession, StaffProfileUpdate, AdministratorProfileUpdate } from '../lib/liveDataService';
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
 
 interface AdminPortalViewProps {
   userProfile: UserProfile;
   userRole: UserRole;
+  activeAcademicSession: string;
   onNavigateToTab?: (tab: string) => void;
 }
 
@@ -28,6 +29,7 @@ const generateStaffPassword = (): string => {
 export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   userProfile,
   userRole,
+  activeAcademicSession,
   onNavigateToTab,
 }) => {
   const isSystemAdmin = userRole === 'admin';
@@ -88,9 +90,10 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   // Success toast notification
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [portalError, setPortalError] = useState<string | null>(null);
+  const [isAdvancingSession, setIsAdvancingSession] = useState(false);
 
   // Load staff data on mount
-  const refreshStaffList = async () => {
+  const refreshStaffList = useCallback(async () => {
     try {
       const [staff, hods, administrators] = await Promise.all([loadStaffDirectory(), loadDepartmentHodAssignments(), isSystemAdmin ? loadAdministrators() : Promise.resolve([])]);
       setStaffList(staff);
@@ -103,11 +106,40 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       setPortalError(null);
     }
     catch (error) { setPortalError(error instanceof Error ? error.message : 'Could not load staff directory.'); }
-  };
+  }, [isSystemAdmin]);
 
   useEffect(() => {
     void refreshStaffList();
-  }, [isSystemAdmin]);
+  }, [refreshStaffList]);
+
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client || !isSupabaseConfigured) return;
+    const refresh = () => { void refreshStaffList(); };
+    const syncSession = () => { void loadActiveAcademicSession().catch((error) => console.error('Could not refresh active academic session', error)); };
+    const channel = client.channel('admin-portal-table-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'staff_profiles' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'department_hod_assignments' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'academic_settings' }, syncSession)
+      .subscribe();
+    return () => { void client.removeChannel(channel); };
+  }, [refreshStaffList]);
+
+  const handleStartNewSession = async () => {
+    if (!isSystemAdmin || isAdvancingSession) return;
+    setPortalError(null);
+    setIsAdvancingSession(true);
+    try {
+      const nextSession = await startNewAcademicSession();
+      setSuccessBanner(`${nextSession} is now the active academic session.`);
+      setTimeout(() => setSuccessBanner(null), 5000);
+    } catch (error) {
+      setPortalError(error instanceof Error ? error.message : 'Could not start the new academic session.');
+    } finally {
+      setIsAdvancingSession(false);
+    }
+  };
 
   // Filtered staff list
   const filteredStaff = staffList.filter((staff) => {
@@ -382,6 +414,18 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
           </button>}
         </div>
       </div>
+
+      {isSystemAdmin && <section className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/70 dark:bg-emerald-950/20 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">Current academic session</p>
+          <p className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">{activeAcademicSession}</p>
+          <p className="mt-0.5 text-[11px] text-slate-600 dark:text-slate-400">New Session advances both session years by one and updates the active session across the portal.</p>
+        </div>
+        <button type="button" onClick={handleStartNewSession} disabled={isAdvancingSession} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+          <span className={`material-symbols-outlined text-[17px] ${isAdvancingSession ? 'animate-spin' : ''}`}>{isAdvancingSession ? 'sync' : 'event_repeat'}</span>
+          {isAdvancingSession ? 'Starting…' : 'New Session'}
+        </button>
+      </section>}
 
       {/* Success Notification Banner */}
       {portalError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs font-semibold text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">{portalError}</div>}

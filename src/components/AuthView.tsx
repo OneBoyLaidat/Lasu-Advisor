@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { OFFICIAL_LOGO_URL } from '../constants/assets';
 import { UserProfile, LASU_DEPARTMENTS, EntryMode } from '../types';
 import { getRegisteredAccounts } from '../lib/authService';
-import { resendSignupConfirmation, resetPasswordDirectly, sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';
-import { isSupabaseConfigured } from '../lib/supabaseClient';
+import { completePasswordRecovery, resendSignupConfirmation, resetPasswordDirectly, sendLoginLink, sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   computeAcademicLevel,
-  STANDARD_ACADEMIC_SESSIONS,
+  getDynamicAcademicSessions,
   getCurrentAcademicSession,
   getStudentCohortSession,
 } from '../lib/academicUtils';
@@ -19,6 +19,7 @@ interface AuthViewProps {
   isDark?: boolean;
   onToggleDark?: () => void;
   initialPage?: AuthPageMode;
+  activeAcademicSession?: string;
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({
@@ -26,6 +27,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   isDark,
   onToggleDark,
   initialPage = 'login',
+  activeAcademicSession,
 }) => {
   // Page mode state (synchronized with URL hash for dedicated page navigation)
   const [currentPage, setCurrentPage] = useState<AuthPageMode>(() => {
@@ -76,7 +78,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [signupPassword, setSignupPassword] = useState<string>('');
   const [confirmSignupPassword, setConfirmSignupPassword] = useState<string>('');
   const [entryMode, setEntryMode] = useState<EntryMode>('utme');
-  const [admissionSession, setAdmissionSession] = useState<string>(STANDARD_ACADEMIC_SESSIONS[0] || '2026/2027');
+  const [admissionSession, setAdmissionSession] = useState<string>(activeAcademicSession || getCurrentAcademicSession());
   const [studentLevel, setStudentLevel] = useState<string>('100 Level');
 
   // Status & Feedback
@@ -85,16 +87,40 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [showDemoCredentials, setShowDemoCredentials] = useState<boolean>(false);
+  const [loginLinkSent, setLoginLinkSent] = useState(false);
 
   // Independent Reset Password Modal state for Students & Staff
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [resetAccountType, setResetAccountType] = useState<'student' | 'staff'>('student');
   const [resetIdentifier, setResetIdentifier] = useState<string>('');
+  const [isRecoverySession, setIsRecoverySession] = useState(false);
+  const [resetLinkSent, setResetLinkSent] = useState(false);
   const [resetNewPassword, setResetNewPassword] = useState<string>('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState<string>('');
   const [resetModalError, setResetModalError] = useState<string | null>(null);
   const [resetModalSuccess, setResetModalSuccess] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (activeAcademicSession) setAdmissionSession(activeAcademicSession);
+  }, [activeAcademicSession]);
+
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client || !isSupabaseConfigured) return;
+    const { data: { subscription } } = client.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoverySession(true);
+        setResetLinkSent(false);
+        setResetNewPassword('');
+        setResetConfirmPassword('');
+        setResetModalError(null);
+        setResetModalSuccess(null);
+        setShowResetModal(true);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Auto-recalculate Academic Level whenever entryMode or admissionSession updates
   useEffect(() => {
@@ -133,20 +159,28 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setResetModalSuccess(null);
 
     const cleanTargetId = resetIdentifier.trim();
-    if (!cleanTargetId) {
-      setResetModalError(
-        resetAccountType === 'student'
-          ? 'Please enter your Matric number or student email address.'
-          : 'Please enter your Staff ID or staff email address.'
-      );
+    if (isSupabaseConfigured && !isRecoverySession) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTargetId)) {
+        setResetModalError('Enter the email address registered to your account.');
+        return;
+      }
+      setIsResetting(true);
+      try {
+        await sendPasswordReset(cleanTargetId);
+        setResetLinkSent(true);
+        setResetModalSuccess('If an account uses that email, a password reset link has been sent. Check your inbox and spam folder.');
+      } catch (error) {
+        setResetModalError(error instanceof Error ? error.message : 'Could not send a password reset email. Please try again.');
+      } finally {
+        setIsResetting(false);
+      }
       return;
     }
 
-    if (!resetNewPassword || resetNewPassword.length < 5) {
-      setResetModalError('Password must contain at least 5 characters.');
+    if (resetNewPassword.length < 8 || !/[A-Z]/.test(resetNewPassword) || !/[a-z]/.test(resetNewPassword) || !/[0-9]/.test(resetNewPassword) || !/[^A-Za-z0-9\s]/.test(resetNewPassword)) {
+      setResetModalError('Choose a password with at least 8 characters, including uppercase, lowercase, a number, and a symbol.');
       return;
     }
-
     if (resetNewPassword !== resetConfirmPassword) {
       setResetModalError('Passwords do not match. Please ensure both passwords are identical.');
       return;
@@ -154,6 +188,17 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
     setIsResetting(true);
     try {
+      if (isSupabaseConfigured && isRecoverySession) {
+        const result = await completePasswordRecovery(resetNewPassword);
+        if (!result.success || !result.profile) {
+          setResetModalError(result.error || 'Could not update your password. Request a new recovery link and try again.');
+          return;
+        }
+        setIsRecoverySession(false);
+        setShowResetModal(false);
+        onLoginSuccess(result.profile, false);
+        return;
+      }
       const res = await resetPasswordDirectly(cleanTargetId, resetNewPassword);
       if (!res.success) {
         setResetModalError(res.error || 'Failed to reset password. Please check your details.');
@@ -176,6 +221,21 @@ export const AuthView: React.FC<AuthViewProps> = ({
   };
 
   // 1. Unified Login Handler
+  const handleSendLoginLink = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsLoading(true);
+    try {
+      await sendLoginLink(identifier);
+      setLoginLinkSent(true);
+      setSuccessMessage('If an account uses that email, a sign-in link has been sent. Check your inbox and spam folder.');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not send a sign-in link. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -237,7 +297,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
         role: 'student',
         department,
         faculty,
-        matricNo: matricNumber,
+        matricNo: matricNumber.trim().toUpperCase(),
         level: studentLevel,
         admissionSession: admissionSession,
         entryMode: entryMode,
@@ -377,6 +437,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   value={identifier}
                   onChange={(e) => {
                     setIdentifier(e.target.value);
+                    setLoginLinkSent(false);
                     setErrorMessage(null);
                   }}
                   placeholder={isSupabaseConfigured ? 'name@lasu.edu.ng' : 'Email, Matric No, or Staff ID'}
@@ -399,6 +460,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     setResetModalError(null);
                     setResetModalSuccess(null);
                     setResetIdentifier(identifier);
+                    setResetLinkSent(false);
+                    setIsRecoverySession(false);
                     setShowResetModal(true);
                   }}
                   className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline cursor-pointer bg-transparent border-0 p-0"
@@ -441,6 +504,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </>
               )}
             </button>
+            {isSupabaseConfigured && (
+              <button type="button" onClick={handleSendLoginLink} disabled={isLoading || loginLinkSent}
+                className="w-full text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50">
+                {loginLinkSent ? 'Sign-in link sent' : 'Email me a sign-in link'}
+              </button>
+            )}
           </form>
 
           <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
@@ -814,7 +883,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     onChange={(e) => handleAdmissionSessionChange(e.target.value)}
                     className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 shadow-2xs appearance-none cursor-pointer"
                   >
-                    {STANDARD_ACADEMIC_SESSIONS.map((sess) => (
+                    {getDynamicAcademicSessions().map((sess) => (
                       <option key={sess} value={sess} className="dark:bg-slate-800">
                         {sess} Session
                       </option>
@@ -987,8 +1056,8 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </div>
               </div>
 
-              {/* Account Type Toggle */}
-              <div>
+              {/* Local demo mode supports account IDs; live recovery uses Auth email links. */}
+              {!isSupabaseConfigured && <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   Account Category
                 </label>
@@ -1016,7 +1085,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     Academic Staff
                   </button>
                 </div>
-              </div>
+              </div>}
 
               {resetModalError && (
                 <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-200 text-xs">
@@ -1031,21 +1100,22 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </div>
               )}
 
-              <div>
+              {!isRecoverySession && <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  {resetAccountType === 'student' ? 'Student Email or Matric Number' : 'Staff Email or Staff ID'}
+                  {isSupabaseConfigured ? 'Registered email address' : resetAccountType === 'student' ? 'Student Email or Matric Number' : 'Staff Email or Staff ID'}
                 </label>
                 <input
-                  type="text"
+                  type={isSupabaseConfigured ? 'email' : 'text'}
                   required
-                  placeholder={resetAccountType === 'student' ? 'e.g. m.adebayo@lasu.edu.ng or CSC/21/0045' : 'e.g. s.jenkins@lasu.edu.ng or STAFF/CSC/088'}
+                  placeholder={isSupabaseConfigured ? 'name@lasu.edu.ng' : resetAccountType === 'student' ? 'Email or CSC/21/0045' : 'Email or STAFF/CSC/088'}
                   value={resetIdentifier}
-                  onChange={(e) => setResetIdentifier(e.target.value)}
+                  onChange={(e) => { setResetIdentifier(e.target.value); setResetLinkSent(false); setResetModalSuccess(null); }}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                 />
-              </div>
+                {isSupabaseConfigured && <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">We will send a secure, one-time reset link to this address.</p>}
+              </div>}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {(!isSupabaseConfigured || isRecoverySession) && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     New Password
@@ -1053,7 +1123,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   <input
                     type="password"
                     required
-                    placeholder="Min. 5 characters"
+                    placeholder="At least 8 characters"
                     value={resetNewPassword}
                     onChange={(e) => setResetNewPassword(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
@@ -1072,7 +1142,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                   />
                 </div>
-              </div>
+              </div>}
 
               <div className="pt-2 flex gap-3">
                 <button
@@ -1080,17 +1150,17 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   onClick={() => setShowResetModal(false)}
                   className="flex-1 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
-                  Cancel
+                  {resetLinkSent ? 'Close' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
-                  disabled={isResetting}
+                  disabled={isResetting || (resetLinkSent && isSupabaseConfigured && !isRecoverySession)}
                   className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {isResetting ? (
                     <span className="material-symbols-outlined animate-spin text-[16px]">sync</span>
                   ) : (
-                    <span>Reset Password</span>
+                    <span>{isSupabaseConfigured && !isRecoverySession ? resetLinkSent ? 'Link sent' : 'Send reset link' : 'Update password'}</span>
                   )}
                 </button>
               </div>

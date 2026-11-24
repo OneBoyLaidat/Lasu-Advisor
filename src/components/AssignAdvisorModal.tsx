@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Adviser } from '../types';
-import { STANDARD_ACADEMIC_SESSIONS } from '../lib/academicUtils';
+import { getCurrentAcademicSession, getDynamicAcademicSessions } from '../lib/academicUtils';
 
 interface AssignAdvisorModalProps {
   isOpen: boolean;
@@ -24,7 +24,7 @@ export const AssignAdvisorModal: React.FC<AssignAdvisorModalProps> = ({
 }) => {
   const [adviserId, setAdviserId] = useState(selectedAdviser?.id || advisers[0]?.id || '');
   const [level, setLevel] = useState(selectedAdviser?.assignedLevel || '300 Level');
-  const [session, setSession] = useState(selectedAdviser?.assignedSession || '2025/2026');
+  const [session, setSession] = useState(selectedAdviser?.assignedSession || getCurrentAcademicSession());
   const [adminNotes, setAdminNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -122,7 +122,7 @@ export const AssignAdvisorModal: React.FC<AssignAdvisorModalProps> = ({
                   onChange={(e) => setSession(e.target.value)}
                   className="w-full bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 pl-3 pr-8 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 appearance-none cursor-pointer"
                 >
-                  {STANDARD_ACADEMIC_SESSIONS.map((sess) => (
+                  {getDynamicAcademicSessions().map((sess) => (
                     <option key={sess} value={sess} className="dark:bg-slate-800">
                       {sess} Session
                     </option>

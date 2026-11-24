@@ -6,9 +6,10 @@ This repository already contains the schema and RLS migration at `supabase/migra
 
 1. Create a Supabase project and save its database password somewhere secure.
 2. In **Project Settings → API**, copy the **Project URL** and the **anon/public key**.
-3. In **Authentication → URL Configuration**, set **Site URL** to the production origin, for example `https://YOUR-SITE.vercel.app/` (do not leave it at localhost). Add `https://YOUR-SITE.vercel.app/email-verified.html` to **Redirect URLs**, plus `http://localhost:3000/email-verified.html` for local work and an appropriate preview URL pattern if previews are used. Signup and resend requests use `/email-verified.html` as `emailRedirectTo`; Supabase must allow each redirect. Keep the standard confirmation template or use `{{ .RedirectTo }}` for its destination.
+3. In **Authentication → URL Configuration**, set **Site URL** to the production origin, for example `https://lasu-advisor.vercel.app/` (do not leave it at localhost). Add `https://lasu-advisor.vercel.app/email-verified.html`, `https://lasu-advisor.vercel.app/#reset-password`, and `https://lasu-advisor.vercel.app/#login` to **Redirect URLs**, plus their localhost equivalents and an appropriate preview URL pattern if previews are used. Signup/resend, password recovery, and email sign-in links use these redirects; Supabase must allow them. Keep the standard templates or use `{{ .RedirectTo }}` as the link destination.
 4. In **Authentication → Providers → Email**, enable email/password sign-in and turn on **Confirm email**. Hosted Supabase projects commonly enable this already, but verify the setting for this project. Do not disable it: live sign-in now fails closed, and signup shows a check-your-email view until confirmation. Confirmation links open `/email-verified.html`, which confirms success and provides a sign-in button.
 5. Keep staff roles administrator-provisioned. Public signup deliberately creates student profiles only; allowing self-selected HOD/Dean roles would be an authorization vulnerability.
+6. Configure **Authentication → SMTP Settings** with a free-tier SMTP provider and a sender domain you control and have verified. Supabase's built-in sender is for testing and is restricted; Vercel environment variables cannot configure Supabase Auth email delivery. Keep SMTP credentials in Supabase Auth settings, not in `VITE_` browser variables. Verify the provider's current free-tier volume and disable click tracking for auth links.
 
 ## 2. Environment variables
 
@@ -20,7 +21,7 @@ VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY
 APP_URL=http://localhost:3000
 ```
 
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the frontend host's build/runtime environment too. They are read in `src/lib/supabaseClient.ts`; the Vite `VITE_` prefix means they are public browser configuration. The anon key is safe to expose only because RLS is enabled. **Never put a Supabase service-role/secret key in a `VITE_` variable or browser code.** On Netlify, configure these variables for the build and redeploy after changing them.
+Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in Vercel's Production build environment. Add them to Preview only if preview deployments should connect to a suitable Supabase project. They are read in `src/lib/supabaseClient.ts`; the Vite `VITE_` prefix means they are public browser configuration. The anon key is safe to expose only because RLS is enabled. **Never put a Supabase service-role/secret key in a `VITE_` variable or browser code.** `vercel.json` builds with `npm run build:web` and publishes `dist`; redeploy after changing either public variable.
 
 Transcript recognition uses PDF.js and Tesseract.js in the browser. OCR runs locally with the open-source English model, worker, and WebAssembly core shipped as static assets; no transcript content or OCR request is sent to a paid or proprietary recognition service. `APP_URL` is for deployment configuration and is not used by the browser Supabase client.
 
@@ -30,18 +31,18 @@ Restart the dev server after editing `.env`. Local development falls back to dem
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query** and run the migration files in timestamp order. If this project already has earlier migrations, apply only `20261124013251_normalize_transcript_courses_and_policy_scopes.sql`. Migration 007 backfills student/staff records before dropping role-specific columns from `profiles`; shared identity and access role stay in `profiles`.
+Apply pending migration files in timestamp order. For a database that already has the schema through `20261124013251_normalize_transcript_courses_and_policy_scopes.sql`, also apply `20261124025000_admin_sessions_and_identity_constraints.sql`. Migration 007 backfills student/staff records before dropping role-specific columns from `profiles`; shared identity and access role stay in `profiles`. The latest migration adds canonical active-session storage, an Admin-only session-advance RPC, case/whitespace-insensitive unique indexes, and realtime publication membership for portal directory tables.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|
 | `profiles` | `user_id` | `uuid` PK, FK to `auth.users.id` | Supabase Auth identity |
 | | `full_name` | `text` | Display name; compared with the OCR result name |
-| | `email` | `text` unique | Account email |
+| | `email` | `text` | Account email; unique after lowercase/trim normalization |
 | | `role` | `text` (`student`, `lecturer`, `hod`, `dean`, `admin`) | Authorization role |
 | | `department`, `faculty` | `text` | Scope for academic access |
 | | `created_at` | `timestamptz` default `now()` | Creation timestamp |
 | `students` | `user_id` | `uuid` PK, FK to `profiles.user_id` | Student identity link |
-| | `matric_no` | `text` unique | Student matriculation number |
+| | `matric_no` | `text` | Student matriculation number; unique after uppercase/trim normalization |
 | | `level`, `admission_session` | `text` nullable | Student cohort, e.g. `300 Level`, `2023/2024` |
 | | `avatar_url`, `phone` | `text` nullable | Student profile details |
 | | `has_uploaded_transcript` | `boolean` default `false` | Whether a result has been uploaded |
@@ -52,6 +53,8 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `level`, `admission_session` | `text` nullable | Adviser cohort, if applicable |
 | | `avatar_url`, `phone` | `text` nullable | Staff profile details |
 | | `must_change_password` | `boolean` default `false` | Staff must set a personal password at first sign-in |
+| `academic_settings` | `singleton` | `boolean` PK constrained to `true` | Single canonical system settings row |
+| | `active_session` | `text` (`YYYY/YYYY`) | Current academic session, advanced by Admin RPC |
 | `adviser_assignments` | `adviser_id` | `uuid` FK to `profiles.user_id` | Assigned lecturer/adviser |
 | | `department`, `admission_session`, `level` | `text` | Cohort key; the three columns form the primary key |
 | `student_results` | `id` | `bigint` identity PK | Result row identifier |
@@ -127,12 +130,13 @@ The migrations enable RLS on the application tables and install these policies (
 | `system administrators read department HOD assignments` | Only system administrators can view the five department assignment slots; changes are made through the `set_department_hod` permission-checked function. |
 | `system administrators update staff profiles` | Only system administrators can edit staff records from the portal. |
 
-After running the migration, open **Database → Publications** and make sure `public.messages` is enabled in the `supabase_realtime` publication. The app subscribes to incoming message inserts so an open inbox can refresh without a reload.
+The migration adds profiles, staff, HOD assignment, and academic settings tables to the `supabase_realtime` publication. Keep `public.messages` enabled there too; the app subscribes to incoming message inserts so an open inbox can refresh without a reload.
 
 ## 5. How the React components use these tables
 
 - `src/lib/supabaseClient.ts` reads the two `VITE_SUPABASE_*` values and creates the browser client. It uses only the anon/public key.
-- `src/components/AuthView.tsx` calls `signInAccount`, `signUpAccount`, and `sendPasswordReset` from `src/lib/liveDataService.ts`. Student signup passes the name, email, matric number, department, faculty, level, and admission session as Auth metadata. The SQL Auth trigger inserts the matching `profiles` row with role `student`. Staff signup is intentionally replaced by approved staff provisioning when Supabase is configured.
+- `src/components/AuthView.tsx` calls `signInAccount`, `signUpAccount`, `sendPasswordReset`, and `sendLoginLink` from `src/lib/liveDataService.ts`. Student signup passes normalized identity and cohort metadata; the SQL Auth trigger inserts the matching `profiles` and `students` rows. Staff signup is intentionally replaced by approved staff provisioning when Supabase is configured.
+- `src/components/AdminPortalView.tsx` advances `academic_settings.active_session` through a role-checked RPC. The resulting session is cached in the browser, and the Admin directory listens for realtime settings/profile changes.
 - `src/App.tsx` restores a Supabase session, loads the profile/results, sends unread receipts, and subscribes to incoming messages. It passes contact, thread, and send/read callbacks into message views.
 - `src/components/StudentMessagingView.tsx` is presentation-only. It renders the assigned adviser contact and selected thread, and calls `onSelectAdviser` / `onSendMessage`. In `App.tsx`, these callbacks mark the thread read and call `persistDirectMessage`; inserts are stored in `messages`.
 - `src/components/AdviserMessagingView.tsx` renders lecturer conversation rows. `loadLecturerConversations` reads only students/results/messages allowed by RLS, and adviser replies call `persistDirectMessage`. Selecting a conversation writes `read_at` for unread messages addressed to that adviser.

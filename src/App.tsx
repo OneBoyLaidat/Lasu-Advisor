@@ -41,7 +41,8 @@ import { AdminPortalView } from './components/AdminPortalView';
 import { propagateAdviserAssignmentToStoredAccounts } from './lib/authService';
 import { getCurrentProfile, loadAcademicAnalytics, loadDirectMessages, loadLatestTranscript, loadLecturerConversations, loadStaffMessageContacts, loadStudentAdvisers, markDirectMessagesRead, persistAdviserAssignment, persistDirectMessage, persistResultPromptDismissal, persistTranscript, persistUserProfile, signOutAccount, clearMustChangePassword, resetPasswordDirectly, updateOwnPassword } from './lib/liveDataService';
 import { getSupabaseClient, isSupabaseConfigured } from './lib/supabaseClient';
-import { getCurrentSemesterKey } from './lib/academicUtils';
+import { getCurrentAcademicSession, getCurrentSemesterKey } from './lib/academicUtils';
+import { loadActiveAcademicSession } from './lib/liveDataService';
 
 // Modal imports
 import { BookAppointmentModal } from './components/BookAppointmentModal';
@@ -96,6 +97,7 @@ const statsFromTranscript = (transcript: { courses: CourseResult[]; cgpa: number
 
 export function App() {
   // Global State
+  const [activeAcademicSession, setActiveAcademicSession] = useState<string>(() => getCurrentAcademicSession());
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isAuthInitializing, setIsAuthInitializing] = useState<boolean>(isSupabaseConfigured);
   const [userRole, setUserRole] = useState<UserRole>('student');
@@ -105,6 +107,15 @@ export function App() {
   const [globalSearchQuery, setGlobalSearchQuery] = useState<string>('');
   const [toasts, setToasts] = useState<ToastNotice[]>([]);
   const [hasNudgeNotice, setHasNudgeNotice] = useState<boolean>(false);
+
+  useEffect(() => {
+    const syncActiveSession = () => setActiveAcademicSession(getCurrentAcademicSession());
+    window.addEventListener('lasu-academic-session-change', syncActiveSession);
+    loadActiveAcademicSession().catch((error) => console.error('Could not load active academic session', error));
+    return () => {
+      window.removeEventListener('lasu-academic-session-change', syncActiveSession);
+    };
+  }, []);
 
   // Dark Mode / Theme state with local persistence (default: dark)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -987,6 +998,7 @@ export function App() {
     return (
       <AuthView
         isDark={isDark}
+        activeAcademicSession={activeAcademicSession}
         onToggleDark={handleToggleDark}
         onLoginSuccess={(profile, isFirstLogin = false) => {
           // Upload Results modal should pop up automatically ONLY upon the user's very first login
@@ -1327,6 +1339,7 @@ export function App() {
               <AdminPortalView
                 userProfile={userProfile}
                 userRole={userRole}
+                activeAcademicSession={activeAcademicSession}
                 onNavigateToTab={(tab) => setCurrentTab(tab)}
               />
             )}

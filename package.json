@@ -10,7 +10,8 @@
     "start": "node prepare-temp-dir.mjs && node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

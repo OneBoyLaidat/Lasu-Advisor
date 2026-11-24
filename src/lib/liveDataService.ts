@@ -2,7 +2,7 @@ import { User } from '@supabase/supabase-js';
 import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConversation, UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload } from '../types';
 import { AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember, clearMustChangePassword, hasUserLoggedInBefore, markUserAsLoggedIn } from './authService';
 import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
-import { getCurrentSemesterKey } from './academicUtils';
+import { getCurrentAcademicSession, getCurrentSemesterKey, nextAcademicSession, setActiveAcademicSession } from './academicUtils';
 
 type ProfileRow = {
   user_id: string;
@@ -195,7 +195,7 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
           full_name: data.name.trim(),
           department: data.department,
           faculty: data.faculty,
-          matric_no: data.matricNo,
+          matric_no: data.matricNo.trim().toUpperCase(),
           level: data.level,
           admission_session: data.admissionSession,
         },
@@ -206,7 +206,14 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
   }
   const { data: result, error } = signupResponse;
   if (error) {
-    return { success: false, error: error.message };
+    const message = error.message || '';
+    if (/matric_no_normalized|duplicate key|23505/i.test(message)) {
+      return { success: false, error: 'An account already uses this matric number. Check the number or contact your department office.' };
+    }
+    if (/already registered|already been registered|user already exists/i.test(message)) {
+      return { success: false, error: 'An account already uses this email address. Sign in or reset its password.' };
+    }
+    return { success: false, error: message };
   }
   if (!result.session) {
     return { success: true, confirmationRequired: true };
@@ -569,8 +576,35 @@ export async function sendPasswordReset(email: string): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) throw new Error('Password recovery is available for live accounts only. Contact an administrator for demo credentials.');
   if (!email.includes('@')) throw new Error('Enter the email address associated with your account first.');
-  const { error } = await client.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: `${window.location.origin}/#login` });
+  const { error } = await client.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: `${window.location.origin}/#reset-password` });
   if (error) throw error;
+}
+
+export async function sendLoginLink(email: string): Promise<void> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) throw new Error('Email sign-in links are available for live accounts only.');
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error('Enter your registered email address first.');
+  const { error } = await client.auth.signInWithOtp({
+    email: normalizedEmail,
+    options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/#login` },
+  });
+  if (error) throw error;
+}
+
+export async function completePasswordRecovery(password: string): Promise<AuthResult> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return { success: false, error: 'Password recovery requires the live authentication service.' };
+  const { data, error } = await client.auth.updateUser({ password });
+  if (error) return { success: false, error: error.message };
+  if (!data.user) return { success: false, error: 'The recovery session has expired. Request a new password reset link.' };
+  try {
+    const profile = await getProfileForUser(data.user);
+    if (!profile) return { success: false, error: 'Password updated, but the account profile could not be loaded. Sign in with the new password.' };
+    return { success: true, profile };
+  } catch (profileError) {
+    return { success: false, error: profileError instanceof Error ? profileError.message : 'Password updated, but the account profile could not be loaded.' };
+  }
 }
 
 
@@ -592,28 +626,37 @@ export async function resetPasswordDirectly(
     if (sessionData?.session) {
       const { error } = await client.auth.updateUser({ password: newPassword });
       if (error) return { success: false, error: error.message };
-      resetAccountPassword(identifier, newPassword);
       return { success: true, message: 'Password updated successfully!' };
     }
   } catch (err) {
     // If not authenticated, proceed to reset via email or local accounts
   }
 
-  if (identifier.includes('@')) {
-    try {
-      await sendPasswordReset(identifier);
-      resetAccountPassword(identifier, newPassword);
-      return { success: true, message: 'Password reset link sent to your email, and credentials updated.' };
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Could not send reset email.';
-      // Fallback to local reset if email failed
-      const local = resetAccountPassword(identifier, newPassword);
-      if (local.success) return local;
-      return { success: false, error: msg };
-    }
-  }
+  return { success: false, error: 'Request a password reset link using your registered email, then follow the link to choose a new password.' };
+}
 
-  return resetAccountPassword(identifier, newPassword);
+export async function loadActiveAcademicSession(): Promise<string | null> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) return null;
+  const { data, error } = await client.from('academic_settings').select('active_session').eq('singleton', true).maybeSingle();
+  if (error) throw error;
+  if (!data?.active_session) return null;
+  setActiveAcademicSession(data.active_session);
+  return data.active_session;
+}
+
+export async function startNewAcademicSession(): Promise<string> {
+  const client = getSupabaseClient();
+  if (!client || !isSupabaseConfigured) {
+    const next = nextAcademicSession(getCurrentAcademicSession());
+    setActiveAcademicSession(next);
+    return next;
+  }
+  const { data, error } = await client.rpc('advance_academic_session');
+  if (error) throw error;
+  if (typeof data !== 'string') throw new Error('The new academic session could not be confirmed. Refresh and try again.');
+  setActiveAcademicSession(data);
+  return data;
 }
 
 /**
@@ -626,7 +669,7 @@ export async function registerStaffAccount(
     const client = getSupabaseClient();
     if (!client) return { success: false, error: 'Authentication service is unavailable.' };
     const { data: sessionData, error: sessionError } = await client.auth.getSession();
-    if (sessionError || !sessionData.session?.access_token) return registerStaffManually(data);
+    if (sessionError || !sessionData.session?.access_token) return { success: false, error: 'Sign in as a system administrator before registering staff accounts.' };
     try {
       const response = await fetch('/.netlify/functions/admin-create-staff', {
         method: 'POST',
@@ -635,8 +678,6 @@ export async function registerStaffAccount(
       });
       const result = await response.json();
       if (!response.ok || !result.success) {
-        const local = registerStaffManually(data);
-        if (local.success) return local;
         return { success: false, error: result.error || 'Staff registration failed.' };
       }
       const profileRow = result.staff;

@@ -14,9 +14,58 @@ export interface ComputedLevelResult {
  * the session year increments automatically to the new academic session (e.g. 2026/2027).
  * This ensures the latest active session is always available dynamically without manual super-admin intervention.
  */
-export function getCurrentAcademicSession(referenceDate: Date = new Date()): string {
-  const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth(); // 0-indexed: 0 = Jan, 6 = July, 7 = Aug, 8 = Sept
+const ACTIVE_ACADEMIC_SESSION_KEY = 'lasu_active_academic_session';
+const ACTIVE_ACADEMIC_SESSION_EVENT = 'lasu-academic-session-change';
+
+export function setActiveAcademicSession(session: string): void {
+  if (!/^(19|20)\d{2}\/(19|20)\d{2}$/.test(session)) return;
+  const [start, end] = session.split('/').map(Number);
+  if (end !== start + 1) return;
+  try {
+    window.localStorage.setItem(ACTIVE_ACADEMIC_SESSION_KEY, session);
+    window.dispatchEvent(new Event(ACTIVE_ACADEMIC_SESSION_EVENT));
+  } catch {
+    // Keep the session usable in restricted storage contexts for this tab.
+  }
+  activeAcademicSessionInMemory = session;
+}
+
+let activeAcademicSessionInMemory: string | null = null;
+
+function readActiveAcademicSession(): string | null {
+  if (activeAcademicSessionInMemory) return activeAcademicSessionInMemory;
+  try {
+    const stored = window.localStorage.getItem(ACTIVE_ACADEMIC_SESSION_KEY);
+    if (stored && /^(19|20)\d{2}\/\d{4}$/.test(stored)) {
+      const [start, end] = stored.split('/').map(Number);
+      if (end === start + 1) {
+        activeAcademicSessionInMemory = stored;
+        return stored;
+      }
+    }
+  } catch {
+    // Storage may be blocked; the calendar fallback remains available.
+  }
+  return null;
+}
+
+export function nextAcademicSession(session: string): string {
+  const match = session.match(/^(19|20)(\d{2})\/(19|20)(\d{2})$/);
+  if (!match) throw new Error('Academic session must use the YYYY/YYYY format.');
+  const startYear = Number(`${match[1]}${match[2]}`);
+  const endYear = Number(`${match[3]}${match[4]}`);
+  if (endYear !== startYear + 1) throw new Error('Academic session years must be consecutive.');
+  return `${startYear + 1}/${startYear + 2}`;
+}
+
+export function getCurrentAcademicSession(referenceDate?: Date): string {
+  if (!referenceDate) {
+    const activeSession = readActiveAcademicSession();
+    if (activeSession) return activeSession;
+  }
+  const date = referenceDate || new Date();
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed: 0 = Jan, 6 = July, 7 = Aug, 8 = Sept
 
   // In the university calendar, second semester concluding in July/August triggers
   // rollover to the new academic session (${year}/${year+1}) for admissions and new year
@@ -28,14 +77,16 @@ export function getCurrentAcademicSession(referenceDate: Date = new Date()): str
 }
 
 /** Stable per-semester key used to keep result prompts semester-specific. */
-export function getCurrentSemesterKey(referenceDate: Date = new Date()): string {
-  const month = referenceDate.getMonth();
+export function getCurrentSemesterKey(referenceDate?: Date): string {
+  const date = referenceDate || new Date();
+  const month = date.getMonth();
   const semester = month >= 6 || month === 0 ? 'S1' : 'S2';
   return `${getCurrentAcademicSession(referenceDate)}-${semester}`;
 }
 
-export function getCurrentSemesterLabel(referenceDate: Date = new Date()): string {
-  const month = referenceDate.getMonth();
+export function getCurrentSemesterLabel(referenceDate?: Date): string {
+  const date = referenceDate || new Date();
+  const month = date.getMonth();
   const semester = month >= 6 || month === 0 ? 'First Semester' : 'Second Semester';
   return `${semester} ${getCurrentAcademicSession(referenceDate)}`;
 }
@@ -46,12 +97,13 @@ export function getCurrentSemesterLabel(referenceDate: Date = new Date()): strin
  * Automatically updates every semester rollover.
  */
 export function getDynamicAcademicSessions(
-  referenceDate: Date = new Date(),
+  referenceDate?: Date,
   includeNextSession: boolean = true
 ): string[] {
   const currentSession = getCurrentAcademicSession(referenceDate);
+  const calendarDate = referenceDate || new Date();
   const startYearMatch = currentSession.match(/\b(19\d\d|20\d\d)\b/);
-  const currentStartYear = startYearMatch ? parseInt(startYearMatch[1], 10) : referenceDate.getFullYear();
+  const currentStartYear = startYearMatch ? parseInt(startYearMatch[1], 10) : calendarDate.getFullYear();
 
   // If includeNextSession is true, allow upcoming admission session selection (e.g. 2026/2027 or 2027/2028)
   const topYear = includeNextSession ? Math.max(2026, currentStartYear) : Math.max(2025, currentStartYear);
@@ -60,13 +112,6 @@ export function getDynamicAcademicSessions(
   const sessions: string[] = [];
   for (let y = topYear; y >= minYear; y--) {
     sessions.push(`${y}/${y + 1}`);
-  }
-
-  // Explicitly ensure 2026/2027 and 2025/2026 are included in case of clock discrepancies
-  if (!sessions.includes('2026/2027')) sessions.unshift('2026/2027');
-  if (!sessions.includes('2025/2026')) {
-    const idx = sessions.indexOf('2026/2027');
-    sessions.splice(idx + 1, 0, '2025/2026');
   }
 
   // Remove duplicates and maintain descending order
