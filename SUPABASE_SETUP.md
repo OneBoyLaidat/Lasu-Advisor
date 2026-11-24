@@ -6,8 +6,8 @@ This repository already contains the schema and RLS migration at `supabase/migra
 
 1. Create a Supabase project and save its database password somewhere secure.
 2. In **Project Settings → API**, copy the **Project URL** and the **anon/public key**.
-3. In **Authentication → URL Configuration**, set **Site URL** to the production origin, for example `https://YOUR-SITE.netlify.app/` (do not leave it at localhost). Add the exact production origin to **Redirect URLs**, plus `http://localhost:3000/**` for local work and a Netlify preview pattern such as `https://**--YOUR-SITE.netlify.app/**` if previews are used. Signup passes the current app origin as `emailRedirectTo`, so Supabase must allow the production URL. If you customized the confirmation email template, use `{{ .RedirectTo }}` for the app return URL or keep the standard `{{ .ConfirmationURL }}` link.
-4. In **Authentication → Providers → Email**, enable email/password sign-in. Choose whether new students must confirm their email. When confirmation is enabled, signup shows a check-your-email message and the student signs in after confirming.
+3. In **Authentication → URL Configuration**, set **Site URL** to the production origin, for example `https://YOUR-SITE.vercel.app/` (do not leave it at localhost). Add `https://YOUR-SITE.vercel.app/email-verified.html` to **Redirect URLs**, plus `http://localhost:3000/email-verified.html` for local work and an appropriate preview URL pattern if previews are used. Signup and resend requests use `/email-verified.html` as `emailRedirectTo`; Supabase must allow each redirect. Keep the standard confirmation template or use `{{ .RedirectTo }}` for its destination.
+4. In **Authentication → Providers → Email**, enable email/password sign-in and turn on **Confirm email**. Hosted Supabase projects commonly enable this already, but verify the setting for this project. Do not disable it: live sign-in now fails closed, and signup shows a check-your-email view until confirmation. Confirmation links open `/email-verified.html`, which confirms success and provides a sign-in button.
 5. Keep staff roles administrator-provisioned. Public signup deliberately creates student profiles only; allowing self-selected HOD/Dean roles would be an authorization vulnerability.
 
 ## 2. Environment variables
@@ -30,7 +30,7 @@ Restart the dev server after editing `.env`. Local development falls back to dem
 
 ## 3. Apply the database schema
 
-Open **SQL Editor → New query** and run the migration files in timestamp order: `202610290001_lasu_advisor_live_data.sql`, `202610300001_backfill_student_profiles.sql`, `202610300002_student_semester_results_and_advisers.sql`, `202610300003_admin_staff_management.sql`, `202610300004_staff_credentials.sql`, `202610300005_admin_portal_management.sql`, `202610300006_admin_account_provisioning.sql`, `202610300007_split_student_staff_profiles.sql`, then `202610300008_super_admin_bootstrap.sql`. Migration 007 backfills student/staff records before dropping role-specific columns from `profiles`; shared identity and access role stay in `profiles`.
+Open **SQL Editor → New query** and run the migration files in timestamp order. If this project already has earlier migrations, apply only `20261124013251_normalize_transcript_courses_and_policy_scopes.sql`. Migration 007 backfills student/staff records before dropping role-specific columns from `profiles`; shared identity and access role stay in `profiles`.
 
 | Table | Column | Type | Purpose |
 |---|---|---|---|
@@ -59,7 +59,7 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `file_name` | `text` | Uploaded PDF filename |
 | | `file_path` | `text` nullable | Object path in private `result-documents` bucket |
 | | `document_student_name` | `text` | OCR-read name checked against `profiles.full_name` |
-| | `courses` | `jsonb` | Array of course objects described below |
+| | `courses` | `jsonb` | Temporary compatibility snapshot, kept during rollout for older app builds |
 | | `cgpa` | `numeric(4,2)` | Calculated CGPA |
 | | `semester_key` | `text` nullable | Key used to show a new result prompt once each semester |
 | | `created_at` | `timestamptz` default `now()` | Upload time |
@@ -73,8 +73,9 @@ Open **SQL Editor → New query** and run the migration files in timestamp order
 | | `hod_id` | `uuid` unique FK to `profiles.user_id` | HOD assigned to that department; an HOD can occupy one slot |
 | | `assigned_at` | `timestamptz` default `now()` | Last assignment time |
 | | `assigned_by` | `uuid` FK to `profiles.user_id` | Admin who made the assignment |
+| `student_result_courses` | `(result_id, course_position)` | Composite PK; cascading FK to `student_results.id` | Normalized ordered course rows, including score, grade, units, semester, year, and OCR review flags |
 
-Each `student_results.courses` array item follows the frontend `CourseResult` shape: `code` (string), `title` (string), `units` (number), `grade` (string), `score` (number), `status` (string), `semester` (string), `academicYear` (string), and `gpPoints` (number). Example: `[{"code":"CSC301","title":"Data Structures","units":3,"grade":"A","score":78,"status":"Passed","semester":"First Semester","academicYear":"2024/2025","gpPoints":15}]`.
+The frontend reads canonical course rows from `student_result_courses`. A database trigger mirrors legacy `student_results.courses` JSON writes into normalized rows so already deployed app builds remain compatible during rollout. Academic analytics also aggregates the normalized table. Remove the JSON compatibility column only after all active clients have moved to normalized writes.
 
 The final migration creates `public.get_academic_analytics()`, an aggregate-only function scoped to the signed-in lecturer's assigned cohorts, HOD's department, or Dean's faculty. It does not return individual student profiles to a Dean.
 

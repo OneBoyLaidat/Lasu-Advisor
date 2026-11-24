@@ -248,12 +248,13 @@ export const AuthView: React.FC<AuthViewProps> = ({
         return;
       }
 
+      if (result.confirmationRequired) {
+        setConfirmationEmail(signupEmail.trim().toLowerCase());
+        return;
+      }
+
       if (!result.profile) {
-        setSuccessMessage('Student account registered successfully! You can now sign in.');
-        setTimeout(() => {
-          setIdentifier(signupEmail.trim().toLowerCase());
-          navigateTo('login');
-        }, 1200);
+        setErrorMessage('Your account was created, but its profile is not ready yet. Please try signing in again shortly.');
         return;
       }
 
@@ -690,7 +691,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
           )}
 
-          {false && confirmationEmail ? (
+          {confirmationEmail ? (
             <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 p-5 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300">
                 <span className="material-symbols-outlined text-[26px]">mark_email_read</span>
@@ -701,7 +702,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 Open it to verify your account. If it is not in your inbox, check your spam folder.
               </p>
               <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                The link returns you to this app. After confirmation, sign in with your email and password.
+                After verification, you will see a success page with a button back to sign in.
               </p>
               <button
                 type="button"

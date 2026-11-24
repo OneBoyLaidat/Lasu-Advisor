@@ -113,9 +113,11 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
 }
 
 export async function signInAccount(identifier: string, password: string): Promise<AuthResult> {
-  // Always verify system administrator and local fallback accounts first
+  // Local accounts are a development-only demo path. Live accounts must always
+  // authenticate through Supabase so email confirmation and server-side roles
+  // cannot be bypassed by a stale browser-local account.
   const localAuth = authenticateUser(identifier, password);
-  if (localAuth.success && localAuth.profile && (localAuth.profile.role === 'admin' || !isSupabaseConfigured)) {
+  if (!isSupabaseConfigured && localAuth.success && localAuth.profile) {
     const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(localAuth.profile.email);
     if (isFirstLogin) {
       markUserAsLoggedIn(localAuth.profile.id);
@@ -132,46 +134,18 @@ export async function signInAccount(identifier: string, password: string): Promi
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
   if (!identifier.includes('@')) {
-    const localAuth = authenticateUser(identifier, password);
-    if (localAuth.success && localAuth.profile) {
-      const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(localAuth.profile.email);
-      if (isFirstLogin) {
-        markUserAsLoggedIn(localAuth.profile.id);
-        markUserAsLoggedIn(localAuth.profile.email);
-        localAuth.profile.hasLoggedInBefore = true;
-      }
-      return { success: true, profile: localAuth.profile, isFirstLogin };
-    }
     return { success: false, error: 'Use the email address on your LASU Advisor account to sign in.' };
   }
   let signInResponse: Awaited<ReturnType<typeof client.auth.signInWithPassword>>;
   try {
     signInResponse = await client.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password });
   } catch (connectionError) {
-    const localAuth = authenticateUser(identifier, password);
-    if (localAuth.success && localAuth.profile) {
-      return { success: true, profile: localAuth.profile, isFirstLogin: false };
-    }
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
   const { data, error } = signInResponse;
   if (error) {
-    const localAuth = authenticateUser(identifier, password);
-    if (localAuth.success && localAuth.profile) {
-      const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(localAuth.profile.email);
-      if (isFirstLogin) {
-        markUserAsLoggedIn(localAuth.profile.id);
-        markUserAsLoggedIn(localAuth.profile.email);
-        localAuth.profile.hasLoggedInBefore = true;
-      }
-      return { success: true, profile: localAuth.profile, isFirstLogin };
-    }
     if (error.code === 'email_not_confirmed') {
-      const localAuth = authenticateUser(identifier, password);
-      if (localAuth.success && localAuth.profile) {
-        return { success: true, profile: localAuth.profile, isFirstLogin: false };
-      }
-      return { success: false, error: 'Email or password is incorrect. Please check your credentials.' };
+      return { success: false, error: 'Please verify your email from the latest confirmation message before signing in. You can request a new link from the registration screen.' };
     }
     if (error.code === 'invalid_credentials') {
       return { success: false, error: 'Email or password is incorrect. If you just registered, confirm your email from the latest verification message before signing in.' };
@@ -208,7 +182,7 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
   if (data.role !== 'student') return { success: false, error: 'Staff accounts are provisioned by faculty administrators. Please request an invitation.' };
-  const emailRedirectTo = typeof window === 'undefined' ? undefined : new URL('/', window.location.origin).toString();
+  const emailRedirectTo = typeof window === 'undefined' ? undefined : new URL('/email-verified.html', window.location.origin).toString();
   let signupResponse: Awaited<ReturnType<typeof client.auth.signUp>>;
   try {
     signupResponse = await client.auth.signUp({
@@ -231,15 +205,11 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
   const { data: result, error } = signupResponse;
-  const localResult = registerNewUser(data);
   if (error) {
-    if (localResult.success && localResult.profile) {
-      return { success: true, profile: localResult.profile, confirmationRequired: false };
-    }
     return { success: false, error: error.message };
   }
   if (!result.session) {
-    return { success: true, confirmationRequired: false, profile: localResult.profile };
+    return { success: true, confirmationRequired: true };
   }
   if (!result.user) return { success: false, error: 'Account was created, but its identity could not be loaded. Please sign in.' };
   try {
@@ -255,7 +225,7 @@ export async function resendSignupConfirmation(email: string): Promise<AuthResul
   if (!client || !isSupabaseConfigured) {
     return { success: false, error: supabaseConfigurationError || 'Email confirmation is available for live accounts only.' };
   }
-  const emailRedirectTo = typeof window === 'undefined' ? undefined : new URL('/', window.location.origin).toString();
+  const emailRedirectTo = typeof window === 'undefined' ? undefined : new URL('/email-verified.html', window.location.origin).toString();
   try {
     const { error } = await client.auth.resend({
       type: 'signup',
@@ -426,9 +396,18 @@ export async function persistTranscript(
 export async function loadLatestTranscript(userId: string): Promise<{ courses: CourseResult[]; cgpa: number; fileName: string; semesterKey?: string } | null> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return null;
-  const { data, error } = await client.from('student_results').select('courses,cgpa,file_name,semester_key').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  const { data, error } = await client.from('student_results').select('id,courses,cgpa,file_name,semester_key').eq('user_id', userId).order('created_at', { ascending: false }).limit(1).maybeSingle();
   if (error) throw error;
-  return data ? { courses: data.courses as CourseResult[], cgpa: Number(data.cgpa), fileName: String(data.file_name), semesterKey: data.semester_key || undefined } : null;
+  if (!data) return null;
+  const { data: courseRows, error: courseError } = await client.from('student_result_courses')
+    .select('code,title,units,grade,score,status,semester,academic_year,gp_points')
+    .eq('result_id', data.id)
+    .order('course_position', { ascending: true });
+  if (courseError) throw courseError;
+  const courses = courseRows?.length
+    ? courseRows.map((course) => ({ ...course, academicYear: course.academic_year, gpPoints: Number(course.gp_points) })) as CourseResult[]
+    : data.courses as CourseResult[];
+  return { courses, cgpa: Number(data.cgpa), fileName: String(data.file_name), semesterKey: data.semester_key || undefined };
 }
 
 export async function persistDirectMessage(input: {

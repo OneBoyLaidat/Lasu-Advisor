@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f5132" />
+    <title>Email verified | LASU Advisor</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: #f4f7f5; color: #17221b; }
+      main { width: min(100%, 440px); padding: 40px 32px; border: 1px solid #dce8df; border-radius: 24px; background: #fff; text-align: center; box-shadow: 0 18px 50px rgb(15 81 50 / 9%); }
+      .mark { width: 60px; height: 60px; margin: 0 auto 20px; display: grid; place-items: center; border-radius: 50%; background: #e7f4eb; color: #0f5132; font-size: 30px; line-height: 1; }
+      h1 { margin: 0; font-size: 26px; letter-spacing: -0.03em; }
+      p { margin: 12px 0 26px; color: #56665b; font-size: 15px; line-height: 1.6; }
+      a { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; padding: 0 22px; border-radius: 12px; background: #0f5132; color: #fff; font-size: 15px; font-weight: 700; text-decoration: none; }
+      a:hover, a:focus-visible { background: #0b4027; }
+      a:focus-visible { outline: 3px solid #91c6a4; outline-offset: 3px; }
+      @media (max-width: 480px) { main { padding: 32px 22px; } h1 { font-size: 23px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true">✓</div>
+      <h1>Email verified successfully</h1>
+      <p>Your LASU Advisor account is ready. Continue to sign in with your email and password.</p>
+      <a href="/#login">Continue to sign in</a>
+    </main>
+    <script>
+      // Auth confirmation links can include a one-time token in the URL.
+      // Remove it from the visible address after Supabase has verified it.
+      if (window.location.search || window.location.hash) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    </script>
+  </body>
+</html>
