@@ -97,8 +97,8 @@ export const InterventionModal: React.FC<InterventionModalProps> = ({
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <span className="material-symbols-outlined text-[16px] text-emerald-600">mail</span>
-            Dispatch Email Notice
+            <span className="material-symbols-outlined text-[16px] text-emerald-600">notifications_active</span>
+            Portal Notice
           </button>
         </div>
 

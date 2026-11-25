@@ -151,7 +151,7 @@ export async function signInAccount(identifier: string, password: string): Promi
     const profile = await getProfileForUser(data.user);
     if (!profile) {
       await client.auth.signOut();
-      return { success: false, error: 'Your email is confirmed, but the student profile was not created. Apply the LASU Advisor Supabase migration and check the on_auth_user_created_lasu_profile trigger, then try again.' };
+      return { success: false, error: 'Your account was authenticated, but the student profile was not found. Apply the LASU Advisor Supabase migration and check the on_auth_user_created_lasu_profile trigger, then try again.' };
     }
     const isFirstLogin = !profile.hasLoggedInBefore && !hasUserLoggedInBefore(profile.id) && !hasUserLoggedInBefore(profile.email);
     if (isFirstLogin) {
@@ -517,42 +517,6 @@ export async function markDirectMessagesRead(userId: string, senderEmail: string
   if (error) throw error;
 }
 
-export async function sendPasswordReset(email: string): Promise<void> {
-  const client = getSupabaseClient();
-  if (!client || !isSupabaseConfigured) throw new Error('Password recovery is available for live accounts only. Contact an administrator for demo credentials.');
-  if (!email.includes('@')) throw new Error('Enter the email address associated with your account first.');
-  const { error } = await client.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: `${window.location.origin}/#reset-password` });
-  if (error) throw error;
-}
-
-export async function sendLoginLink(email: string): Promise<void> {
-  const client = getSupabaseClient();
-  if (!client || !isSupabaseConfigured) throw new Error('Email sign-in links are available for live accounts only.');
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw new Error('Enter your registered email address first.');
-  const { error } = await client.auth.signInWithOtp({
-    email: normalizedEmail,
-    options: { shouldCreateUser: false, emailRedirectTo: `${window.location.origin}/#login` },
-  });
-  if (error) throw error;
-}
-
-export async function completePasswordRecovery(password: string): Promise<AuthResult> {
-  const client = getSupabaseClient();
-  if (!client || !isSupabaseConfigured) return { success: false, error: 'Password recovery requires the live authentication service.' };
-  const { data, error } = await client.auth.updateUser({ password });
-  if (error) return { success: false, error: error.message };
-  if (!data.user) return { success: false, error: 'The recovery session has expired. Request a new password reset link.' };
-  try {
-    const profile = await getProfileForUser(data.user);
-    if (!profile) return { success: false, error: 'Password updated, but the account profile could not be loaded. Sign in with the new password.' };
-    return { success: true, profile };
-  } catch (profileError) {
-    return { success: false, error: profileError instanceof Error ? profileError.message : 'Password updated, but the account profile could not be loaded.' };
-  }
-}
-
-
 /**
  * Reset password directly for students or staff members
  */
@@ -574,10 +538,10 @@ export async function resetPasswordDirectly(
       return { success: true, message: 'Password updated successfully!' };
     }
   } catch (err) {
-    // If not authenticated, proceed to reset via email or local accounts
+    // If not authenticated, fall through to guidance below
   }
 
-  return { success: false, error: 'Request a password reset link using your registered email, then follow the link to choose a new password.' };
+  return { success: false, error: 'Sign in with your Matric/Registration Number to update your password in Profile & Security, or contact your department administrator to reset your credentials.' };
 }
 
 export async function loadActiveAcademicSession(): Promise<string | null> {

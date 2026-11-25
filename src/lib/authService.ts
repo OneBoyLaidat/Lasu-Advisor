@@ -178,10 +178,13 @@ export function getRegisteredAccounts(): RegisteredAccount[] {
     }
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      const existingEmails = new Set(parsed.map((a: RegisteredAccount) => (a.email || '').toLowerCase()));
+      const existingKeys = new Set(
+        parsed.map((a: RegisteredAccount) => (a.matricNo || a.staffId || a.id || '').toLowerCase())
+      );
       let changed = false;
       for (const def of DEFAULT_REGISTERED_ACCOUNTS) {
-        if (!existingEmails.has(def.email.toLowerCase())) {
+        const defKey = (def.matricNo || def.staffId || def.id || '').toLowerCase();
+        if (defKey && !existingKeys.has(defKey)) {
           parsed.unshift(def);
           changed = true;
         }
@@ -272,6 +275,7 @@ export function authenticateUser(
   expectedRole?: UserRole
 ): AuthResult {
   const cleanId = identifier.trim().toLowerCase();
+  const normalizedId = normalizeInstitutionalIdentifier(identifier);
   const cleanPass = passwordAttempt.trim();
 
   if (!cleanId) {
@@ -292,9 +296,15 @@ export function authenticateUser(
 
   // Institutional identifiers are the only user-facing login identity.
   const matched = accounts.find((acc) => {
-    const matricMatch = acc.matricNo && acc.matricNo.toLowerCase() === cleanId;
-    const staffMatch = acc.staffId && acc.staffId.toLowerCase() === cleanId;
-    return matricMatch || staffMatch;
+    const matricMatch = acc.matricNo && (
+      acc.matricNo.toLowerCase() === cleanId ||
+      (normalizedId && normalizeInstitutionalIdentifier(acc.matricNo) === normalizedId)
+    );
+    const staffMatch = acc.staffId && (
+      acc.staffId.toLowerCase() === cleanId ||
+      (normalizedId && normalizeInstitutionalIdentifier(acc.staffId) === normalizedId)
+    );
+    return Boolean(matricMatch || staffMatch);
   });
 
   if (!matched) {
@@ -518,9 +528,9 @@ export function registerNewUser(data: {
  * Automatically saves the staff credentials so they can log in immediately.
  */
 export function registerStaffManually(data: ManualStaffRegistrationPayload): AuthResult & { generatedPassword?: string } {
-  const cleanEmail = data.email.trim().toLowerCase();
   const cleanName = data.name.trim();
-  const cleanStaffId = data.staffId.trim().toUpperCase();
+  const cleanStaffId = normalizeInstitutionalIdentifier(data.staffId || '');
+  const cleanEmail = data.email?.trim() ? data.email.trim().toLowerCase() : (cleanStaffId ? internalAuthEmail(cleanStaffId) : '');
   function generateStaffPassword(): string {
     const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
     const lower = 'abcdefghjkmnpqrstuvwxyz';
@@ -548,10 +558,6 @@ export function registerStaffManually(data: ManualStaffRegistrationPayload): Aut
     return { success: false, error: 'Please enter a valid staff full name.' };
   }
 
-  if (!cleanEmail || !cleanEmail.includes('@')) {
-    return { success: false, error: 'Please enter a valid institutional email address.' };
-  }
-
   if (!cleanStaffId) {
     return { success: false, error: 'Staff ID is required.' };
   }
@@ -560,15 +566,13 @@ export function registerStaffManually(data: ManualStaffRegistrationPayload): Aut
 
   // Check duplicates
   const exists = accounts.some(
-    (acc) =>
-      acc.email.toLowerCase() === cleanEmail ||
-      (acc.staffId && acc.staffId.toUpperCase() === cleanStaffId)
+    (acc) => acc.staffId && normalizeInstitutionalIdentifier(acc.staffId) === cleanStaffId
   );
 
   if (exists) {
     return {
       success: false,
-      error: `A staff member or account with this Email (${cleanEmail}) or Staff ID (${cleanStaffId}) already exists.`,
+      error: `A staff member or account with Staff ID (${cleanStaffId}) already exists.`,
     };
   }
 
@@ -679,17 +683,18 @@ export function getStaffDirectory(): StaffMember[] {
 }
 
 /**
- * Reset password for either student or staff member by their email, matricNo, or staffId.
+ * Reset password for either student or staff member by their matricNo/registrationNo or staffId.
  */
 export function resetAccountPassword(
   identifier: string,
   newPassword: string
 ): { success: boolean; message?: string; error?: string } {
   const cleanId = identifier.trim().toLowerCase();
+  const normalizedId = normalizeInstitutionalIdentifier(identifier);
   const cleanPass = newPassword.trim();
 
   if (!cleanId) {
-    return { success: false, error: 'Please enter your registered email, Matric Number, or Staff ID.' };
+    return { success: false, error: 'Please enter your registered Matric / Registration Number or Staff ID.' };
   }
 
   if (!cleanPass || cleanPass.length < 8) {
@@ -710,16 +715,21 @@ export function resetAccountPassword(
 
   const accounts = getRegisteredAccounts();
   const index = accounts.findIndex((acc) => {
-    const emailMatch = acc.email.toLowerCase() === cleanId;
-    const matricMatch = acc.matricNo && acc.matricNo.toLowerCase() === cleanId;
-    const staffMatch = acc.staffId && acc.staffId.toLowerCase() === cleanId;
-    return emailMatch || matricMatch || staffMatch;
+    const matricMatch = acc.matricNo && (
+      acc.matricNo.toLowerCase() === cleanId ||
+      (normalizedId && normalizeInstitutionalIdentifier(acc.matricNo) === normalizedId)
+    );
+    const staffMatch = acc.staffId && (
+      acc.staffId.toLowerCase() === cleanId ||
+      (normalizedId && normalizeInstitutionalIdentifier(acc.staffId) === normalizedId)
+    );
+    return Boolean(matricMatch || staffMatch);
   });
 
   if (index === -1) {
     return {
       success: false,
-      error: `Account with identifier "${identifier}" was not found. Please verify the credentials.`,
+      error: `Account with identifier "${identifier}" was not found. Please verify your Matric / Registration Number or Staff ID.`,
     };
   }
 
@@ -731,13 +741,13 @@ export function resetAccountPassword(
     fetch('/api/auth/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier: cleanId, newPassword: cleanPass }),
+      body: JSON.stringify({ identifier: normalizedId || cleanId, newPassword: cleanPass }),
     }).catch(() => {});
   }
 
   return {
     success: true,
-    message: `Password has been reset successfully for ${accounts[index].name} (${accounts[index].email}). You may now sign in with your new credentials.`,
+    message: `Password has been reset successfully for ${accounts[index].name} (${accounts[index].matricNo || accounts[index].staffId}). You may now sign in with your new credentials.`,
   };
 }
 

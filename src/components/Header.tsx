@@ -258,7 +258,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <p className="text-[10px] text-emerald-700 dark:text-emerald-400 uppercase font-semibold tracking-wider">
                       {userProfile.role} • {userProfile.department}
                     </p>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-mono">{userProfile.email}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-mono">{userProfile.matricNo || userProfile.staffId || ''}</p>
                   </div>
                 </div>
 

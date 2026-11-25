@@ -143,9 +143,9 @@ async function startServer() {
 
   // 5. Node.js Backend Registration Endpoint
   app.post('/api/auth/register', (req: Request, res: Response) => {
-    const { role, name, email, matricNo, staffId } = req.body;
+    const { role, name, matricNo, staffId } = req.body;
 
-    if (!name || !email || !role) {
+    if (!name || !role) {
       return res.status(400).json({
         success: false,
         error: 'Missing required registration parameters',
@@ -198,10 +198,10 @@ async function startServer() {
   app.post('/api/admin/staff', (req: Request, res: Response) => {
     const { name, email, staffId, role, department, faculty, level, password } = req.body;
 
-    if (!name || !email || !staffId || !role) {
+    if (!name || !staffId || !role) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required staff registration parameters (name, email, staffId, role)',
+        error: 'Missing required staff registration parameters (name, staffId, role)',
       });
     }
 

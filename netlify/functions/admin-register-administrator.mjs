@@ -25,14 +25,14 @@ export async function handler(event) {
   let input;
   try { input = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Invalid request body.' }); }
   const name = String(input.name || '').trim();
-  const email = String(input.email || '').trim().toLowerCase();
   const staffId = String(input.staffId || '').trim().toUpperCase();
+  const email = String(input.email || '').trim().toLowerCase() || `id-${staffId.replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()}@accounts.lasu.invalid`;
   const department = String(input.department || '').trim();
   const faculty = String(input.faculty || '').trim();
   const phone = String(input.phone || '').trim();
   const password = String(input.password || '');
-  if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !staffId || !department || !faculty) {
-    return json(400, { error: 'Enter a valid name, email, staff ID, department, and faculty.' });
+  if (name.length < 2 || !staffId || !department || !faculty) {
+    return json(400, { error: 'Enter a valid name, staff ID, department, and faculty.' });
   }
   if (password.length < 8 || !/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9\s]/.test(password)) {
     return json(400, { error: 'Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.' });

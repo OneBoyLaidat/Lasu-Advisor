@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload, LASU_DEPARTMENTS } from '../types';
 import { loadStaffDirectory, loadAdministrators, registerAdministratorAccount, updateAdministratorProfile, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, revokeStaffAccess, loadActiveAcademicSession, startNewAcademicSession, StaffProfileUpdate, AdministratorProfileUpdate } from '../lib/liveDataService';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
+import { internalAuthEmail, normalizeInstitutionalIdentifier } from '../lib/institutionalIdentity';
 
 interface AdminPortalViewProps {
   userProfile: UserProfile;
@@ -173,10 +174,12 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     setIsSubmitting(true);
 
     try {
+      const cleanStaffId = normalizeInstitutionalIdentifier(formStaffId);
+      const internalEmail = formEmail.trim().toLowerCase() || (cleanStaffId ? internalAuthEmail(cleanStaffId) : '');
       const payload: ManualStaffRegistrationPayload = {
         name: formName.trim(),
-        email: formEmail.trim().toLowerCase(),
-        staffId: formStaffId.trim().toUpperCase(),
+        email: internalEmail,
+        staffId: cleanStaffId,
         role: formRole,
         department: formDept,
         faculty: formFaculty,
@@ -232,7 +235,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     try {
       const res = isSupabaseConfigured
         ? await resetStaffCredentials(resetTargetStaff.id, newStaffPassword)
-        : await resetPasswordDirectly(resetTargetStaff.email, newStaffPassword);
+        : await resetPasswordDirectly(resetTargetStaff.staffId, newStaffPassword);
       if (res.success) {
         setSuccessBanner(`Password updated successfully for ${resetTargetStaff.name}. They can now sign in with the new password.`);
         setTimeout(() => setSuccessBanner(null), 5000);
@@ -328,7 +331,9 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     setAdminFormError(null);
     setIsCreatingAdmin(true);
     try {
-      const payload = { ...adminForm, name: adminForm.name.trim(), email: adminForm.email.trim().toLowerCase(), staffId: adminForm.staffId.trim().toUpperCase() };
+      const cleanStaffId = normalizeInstitutionalIdentifier(adminForm.staffId);
+      const internalEmail = adminForm.email.trim().toLowerCase() || (cleanStaffId ? internalAuthEmail(cleanStaffId) : '');
+      const payload = { ...adminForm, name: adminForm.name.trim(), email: internalEmail, staffId: cleanStaffId };
       const result = await registerAdministratorAccount(payload);
       if (!result.success) {
         setAdminFormError(result.error || 'Could not register the administrator.');
@@ -683,7 +688,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 {adminFormError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">{adminFormError}</p>}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Full name<input required minLength={2} value={adminForm.name} onChange={(e) => setAdminForm({ ...adminForm, name: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
-                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Email<input required type="email" value={adminForm.email} onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Staff ID<input required value={adminForm.staffId} onChange={(e) => setAdminForm({ ...adminForm, staffId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Department<select value={adminForm.department} onChange={(e) => setAdminForm({ ...adminForm, department: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">{LASU_DEPARTMENTS.map((department) => <option key={department}>{department}</option>)}</select></label>
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 sm:col-span-2">Faculty<input required value={adminForm.faculty} onChange={(e) => setAdminForm({ ...adminForm, faculty: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
@@ -894,21 +898,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                       placeholder="e.g. Dr. Olumide Adeleke"
                       value={formName}
                       onChange={(e) => setFormName(e.target.value)}
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
-                    />
-                  </div>
-
-                  {/* Institutional Email */}
-                  <div>
-                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Institutional Email Address
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="o.adeleke@lasu.edu.ng"
-                      value={formEmail}
-                      onChange={(e) => setFormEmail(e.target.value)}
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                     />
                   </div>

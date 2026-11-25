@@ -226,7 +226,7 @@ export function App() {
     try {
       const result = isSupabaseConfigured
         ? await updateOwnPassword(forceNewPassword)
-        : await resetPasswordDirectly(userProfile.email, forceNewPassword);
+        : await resetPasswordDirectly(userProfile.matricNo || userProfile.staffId || userProfile.email, forceNewPassword);
       if (!result.success) { setForcePasswordError(result.error || 'Could not update your password.'); return; }
       clearMustChangePassword(userProfile.id);
       setUserProfile((previous) => ({ ...previous, mustChangePassword: false }));
@@ -518,7 +518,7 @@ export function App() {
 
     showToast(
       'Nudge Notification Sent',
-      `Official reminder dispatched to ${studentName} (via Email & Student Portal Notification).`,
+      `Official reminder dispatched to ${studentName} (via Student Portal Notification).`,
       'info'
     );
   };
@@ -1432,6 +1432,7 @@ export function App() {
         onClose={() => setIsTranscriptModalOpen(false)}
         onDismissPrompt={userRole === 'student' ? handleDismissResultPrompt : undefined}
         expectedStudentName={userProfile.name}
+        expectedMatricNo={userProfile.matricNo}
         onTranscriptParsed={handleTranscriptParsed}
       />
 
@@ -1593,8 +1594,8 @@ export function App() {
                   }}
                   className="flex-1 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all"
                 >
-                  <span className="material-symbols-outlined text-[16px]">mail</span>
-                  Direct Email
+                  <span className="material-symbols-outlined text-[16px]">notifications_active</span>
+                  Portal Notice
                 </button>
               </div>
             </div>

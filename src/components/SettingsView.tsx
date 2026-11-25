@@ -83,7 +83,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
     setIsUpdatingPassword(true);
     try {
-      const res = await resetPasswordDirectly(userProfile.email, newPassword);
+      const res = await resetPasswordDirectly(userProfile.matricNo || userProfile.staffId || userProfile.email, newPassword);
       if (res.success) {
         setPasswordStatus({
           type: 'success',
@@ -171,20 +171,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           <div className="mt-5 w-full pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5 text-xs text-left">
             <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">{userProfile.role === 'student' ? 'Matric number:' : 'Staff ID:'}</span>
+              <span className="text-slate-500 dark:text-slate-400">{userProfile.role === 'student' ? 'Matric / Reg No:' : 'Staff ID:'}</span>
               <span className="font-mono font-semibold text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded">
                 {(userProfile.role === 'student' ? userProfile.matricNo : userProfile.staffId) || '—'}
               </span>
             </div>
-
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 dark:text-slate-400">Institutional Email:</span>
-              <span className="font-mono text-slate-700 dark:text-slate-300 text-[11px] truncate max-w-[170px]" title={userProfile.email}>
-                {userProfile.email}
-              </span>
-            </div>
-
-
           </div>
         </div>
 
@@ -222,11 +213,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                   <div>
                     <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                      Email Address (Locked)
+                      {userProfile.role === 'student' ? 'Matric / Registration Number' : 'Staff ID'}
                     </label>
                     <input
-                      type="email"
-                      value={email}
+                      type="text"
+                      value={(userProfile.role === 'student' ? userProfile.matricNo : userProfile.staffId) || '—'}
                       readOnly
                       aria-readonly="true"
                       className="w-full bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-500 dark:text-slate-400 font-mono shadow-2xs"

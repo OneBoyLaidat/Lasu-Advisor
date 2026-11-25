@@ -20,7 +20,15 @@ export async function extractTextFromFile(file: File): Promise<{ text: string }>
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
-      pages.push(content.items.map((item) => ('str' in item ? item.str : '')).join(' '));
+      pages.push(
+        content.items
+          .map((item) => {
+            if (!('str' in item)) return '';
+            const suffix = 'hasEOL' in item && item.hasEOL ? '\n' : ' ';
+            return `${item.str}${suffix}`;
+          })
+          .join('')
+      );
     }
     return { text: pages.join('\n') };
   } finally {

@@ -1,5 +1,6 @@
 import { CourseResult } from '../types';
 import { getCurrentAcademicSession, getCurrentSemesterLabel } from './academicUtils';
+import { normalizeInstitutionalIdentifier } from './institutionalIdentity';
 
 export interface ParsedTranscriptCourse extends CourseResult {
   caScore?: number | null;
@@ -15,7 +16,9 @@ export interface ParsedTranscriptCourse extends CourseResult {
 export interface ParsedTranscriptData {
   studentName?: string;
   matricNo?: string;
+  registrationNo?: string;
   refNo?: string;
+  documentIdentifiers?: string[];
   session?: string;
   level?: string;
   department?: string;
@@ -91,16 +94,87 @@ export function parseTranscriptText(rawText: string, fileName: string): ParsedTr
   const semMatch = rawText.match(/\b(FIRST|SECOND)\s+SEMESTER\b/i);
   if (semMatch) semester = semMatch[0].toUpperCase();
 
-  // Extract Ref / Matric / Student Name
+  // Extract Ref / Matric / Registration / Application Number & Student Name
+  const isPlaceholderId = (value?: string): boolean => {
+    if (!value) return true;
+    const cleaned = value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return !cleaned || ['NA', 'NONE', 'NIL', 'NULL', 'MATRICULATION', 'NUMBER', 'PROGRAMME', 'COURSE'].includes(cleaned);
+  };
+
+  const extractLabeledValue = (labelPattern: RegExp, valuePattern: RegExp): string | undefined => {
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const inlineMatch = line.match(new RegExp(`${labelPattern.source}\\s*[:\\-]?\\s*(${valuePattern.source})`, 'i'));
+      if (inlineMatch?.[1] && !isPlaceholderId(inlineMatch[1])) {
+        return inlineMatch[1].trim();
+      }
+      if (labelPattern.test(line) && i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        const nextMatch = nextLine.match(valuePattern);
+        if (nextMatch?.[0] && !isPlaceholderId(nextMatch[0])) {
+          return nextMatch[0].trim();
+        }
+      }
+    }
+    return undefined;
+  };
+
   let refNo: string | undefined;
-  const refMatch = rawText.match(/\b(?:Ref|Reference|DN)\s*[:\-]?\s*([A-Za-z0-9/]+)\b/i);
-  if (refMatch) refNo = refMatch[1];
+  const refMatch = rawText.match(/\b(?:Doc\s*Reference|Reference|Ref)\s*[:\-]\s*([A-Za-z0-9/_-]+)\b/i);
+  if (refMatch && !isPlaceholderId(refMatch[1])) refNo = refMatch[1].trim();
 
+  let studentName: string | undefined;
   const nameLine = lines.find((line) => /^(?:student\s*name|name\s*of\s*student|full\s*name)\s*[:\-]/i.test(line));
-  const studentName = nameLine?.replace(/^(?:student\s*name|name\s*of\s*student|full\s*name)\s*[:\-]\s*/i, '').trim();
+  if (nameLine) {
+    studentName = nameLine.replace(/^(?:student\s*name|name\s*of\s*student|full\s*name)\s*[:\-]\s*/i, '').trim();
+  } else {
+    const fullNameIdx = lines.findIndex((line) => /\bFULL\s*NAME\b/i.test(line));
+    if (fullNameIdx !== -1 && fullNameIdx + 1 < lines.length) {
+      const candidate = lines[fullNameIdx + 1]
+        .replace(/\b(?:N\/A|NA|NONE|NIL)\b\s*$/i, '')
+        .replace(/\b(?:[A-Z]{2,5}\/\d{2,4}\/\d{3,6}|DN\d{8,14}|\d{9,12})\b\s*$/i, '')
+        .trim();
+      if (candidate && !/^(?:MATRIC|APPLICATION|PROGRAMME|SESSION)/i.test(candidate)) {
+        studentName = candidate;
+      }
+    } else {
+      const inlineNameMatch = rawText.match(/\bFULL\s*NAME\b(?:\s+MATRICULATION\s*NUMBER)?\s+([A-Z][A-Z\s'-]{3,60}?)(?=\s+(?:N\/A|MATRIC|APPLICATION|PROGRAMME|SESSION|\d|[A-Z]{2,4}\/\d))/i);
+      if (inlineNameMatch?.[1]) studentName = inlineNameMatch[1].trim();
+    }
+  }
 
-  const matricLine = lines.find((line) => /^(?:matric(?:ulation)?\s*(?:no\.?|number)?|student\s*id)\s*[:\-]/i.test(line));
-  const matricNo = matricLine?.replace(/^(?:matric(?:ulation)?\s*(?:no\.?|number)?|student\s*id)\s*[:\-]\s*/i, '').trim();
+  const idTokenPattern = /\b(?:[A-Z]{2,5}\/\d{2,4}\/\d{3,6}|[A-Z]{1,4}\d{8,14}|\d{9,12})\b/;
+  const explicitMatric = extractLabeledValue(
+    /(?:matric(?:ulation)?\s*(?:no\.?|number)?|student\s*id)/i,
+    idTokenPattern
+  );
+  const explicitReg = extractLabeledValue(
+    /(?:application|registration|reg\.?)\s*(?:no\.?|number)?/i,
+    idTokenPattern
+  );
+
+  const documentIdentifiersSet = new Set<string>();
+  const addDocumentIdentifier = (raw?: string) => {
+    if (!raw || isPlaceholderId(raw)) return;
+    const normalized = normalizeInstitutionalIdentifier(raw);
+    if (normalized) documentIdentifiersSet.add(normalized);
+    // Also index trailing segment of slash-delimited Doc References like LASU/DIP/TR/DN241728997045
+    if (raw.includes('/')) {
+      const tail = raw.split('/').pop();
+      if (tail && !isPlaceholderId(tail) && /\d{6,}/.test(tail)) {
+        const normalizedTail = normalizeInstitutionalIdentifier(tail);
+        if (normalizedTail) documentIdentifiersSet.add(normalizedTail);
+      }
+    }
+  };
+
+  addDocumentIdentifier(explicitMatric);
+  addDocumentIdentifier(explicitReg);
+  addDocumentIdentifier(refNo);
+
+  const matricNo = explicitMatric || explicitReg || (refNo ? refNo.split('/').pop() : undefined);
+  const registrationNo = explicitReg;
+  const documentIdentifiers = Array.from(documentIdentifiersSet);
 
   const courses: ParsedTranscriptCourse[] = [];
   let missingFieldCount = 0;
@@ -252,7 +326,9 @@ export function parseTranscriptText(rawText: string, fileName: string): ParsedTr
   return {
     studentName,
     matricNo,
+    registrationNo,
     refNo,
+    documentIdentifiers,
     session,
     semesterLabel: semester,
     isProvisionalOrBroadsheet,

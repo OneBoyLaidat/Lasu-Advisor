@@ -9,12 +9,14 @@ import {
   extractTextFromFile,
   runClientOcrOnPdf,
 } from '../lib/ocrTranscriptParser';
+import { normalizeInstitutionalIdentifier } from '../lib/institutionalIdentity';
 
 interface TranscriptParserModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDismissPrompt?: () => void;
   expectedStudentName: string;
+  expectedMatricNo?: string;
   onTranscriptParsed: (
     courses: CourseResult[],
     cgpa: number,
@@ -31,6 +33,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
   onClose,
   onDismissPrompt,
   expectedStudentName,
+  expectedMatricNo,
   onTranscriptParsed,
 }) => {
   const [isScanning, setIsScanning] = useState(false);
@@ -231,6 +234,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
     const gpa = totalUnits > 0 ? parseFloat((totalGradePoints / totalUnits).toFixed(2)) : 0;
 
     return {
+      ...parsedData,
       courses,
       totalUnits,
       passedUnits,
@@ -256,6 +260,26 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
     if (!uploadedFile) {
       setValidationError('Upload the official PDF result before saving these records.');
       return;
+    }
+
+    const normalizedExpectedId = expectedMatricNo ? normalizeInstitutionalIdentifier(expectedMatricNo) : '';
+    const extractedIds = new Set<string>([
+      ...(parsedData.documentIdentifiers || []),
+      ...(parsedData.matricNo ? [normalizeInstitutionalIdentifier(parsedData.matricNo)] : []),
+      ...(parsedData.registrationNo ? [normalizeInstitutionalIdentifier(parsedData.registrationNo)] : []),
+      ...(parsedData.refNo ? [normalizeInstitutionalIdentifier(parsedData.refNo)] : []),
+    ].filter(Boolean));
+
+    if (normalizedExpectedId) {
+      if (extractedIds.size === 0) {
+        setValidationError('The matriculation or registration number could not be verified from the uploaded PDF. Upload a clearer official result slip.');
+        return;
+      }
+      if (!extractedIds.has(normalizedExpectedId)) {
+        const detectedLabel = parsedData.matricNo || parsedData.registrationNo || parsedData.refNo || Array.from(extractedIds)[0];
+        setValidationError(`The matriculation / registration number on this document (“${detectedLabel}”) does not match your account (“${expectedMatricNo}”). Please upload your own result slip.`);
+        return;
+      }
     }
 
     if (!parsedData.studentName?.trim()) {

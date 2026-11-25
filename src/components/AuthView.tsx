@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { OFFICIAL_LOGO_URL } from '../constants/assets';
 import { UserProfile, LASU_DEPARTMENTS, EntryMode } from '../types';
 import { getRegisteredAccounts } from '../lib/authService';
-import { completePasswordRecovery, resendSignupConfirmation, resetPasswordDirectly, sendLoginLink, sendPasswordReset, signInAccount, signUpAccount } from '../lib/liveDataService';
-import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
+import { resetPasswordDirectly, signInAccount, signUpAccount } from '../lib/liveDataService';
+import { isSupabaseConfigured } from '../lib/supabaseClient';
+import { normalizeInstitutionalIdentifier } from '../lib/institutionalIdentity';
 import {
   computeAcademicLevel,
   getDynamicAcademicSessions,
@@ -74,7 +75,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [matricNumber, setMatricNumber] = useState<string>('');
   const [department, setDepartment] = useState<string>(LASU_DEPARTMENTS[4] || 'Computer Science');
   const [faculty, setFaculty] = useState<string>('Faculty of Computing & Information Technology');
-  const [signupEmail, setSignupEmail] = useState<string>('');
   const [signupPassword, setSignupPassword] = useState<string>('');
   const [confirmSignupPassword, setConfirmSignupPassword] = useState<string>('');
   const [entryMode, setEntryMode] = useState<EntryMode>('utme');
@@ -85,16 +85,12 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
   const [showDemoCredentials, setShowDemoCredentials] = useState<boolean>(false);
-  const [loginLinkSent, setLoginLinkSent] = useState(false);
 
   // Independent Reset Password Modal state for Students & Staff
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [resetAccountType, setResetAccountType] = useState<'student' | 'staff'>('student');
   const [resetIdentifier, setResetIdentifier] = useState<string>('');
-  const [isRecoverySession, setIsRecoverySession] = useState(false);
-  const [resetLinkSent, setResetLinkSent] = useState(false);
   const [resetNewPassword, setResetNewPassword] = useState<string>('');
   const [resetConfirmPassword, setResetConfirmPassword] = useState<string>('');
   const [resetModalError, setResetModalError] = useState<string | null>(null);
@@ -104,23 +100,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
   useEffect(() => {
     if (activeAcademicSession) setAdmissionSession(activeAcademicSession);
   }, [activeAcademicSession]);
-
-  useEffect(() => {
-    const client = getSupabaseClient();
-    if (!client || !isSupabaseConfigured) return;
-    const { data: { subscription } } = client.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setIsRecoverySession(true);
-        setResetLinkSent(false);
-        setResetNewPassword('');
-        setResetConfirmPassword('');
-        setResetModalError(null);
-        setResetModalSuccess(null);
-        setShowResetModal(true);
-      }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
 
   // Auto-recalculate Academic Level whenever entryMode or admissionSession updates
   useEffect(() => {
@@ -136,44 +115,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
     setAdmissionSession(sess);
   };
 
-  const handleResendConfirmation = async () => {
-    if (!confirmationEmail) return;
-    setIsLoading(true);
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    try {
-      const result = await resendSignupConfirmation(confirmationEmail);
-      if (!result.success) {
-        setErrorMessage(result.error || 'Could not resend the confirmation email. Please try again.');
-        return;
-      }
-      setSuccessMessage(`A new confirmation link has been sent to ${confirmationEmail}.`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setResetModalError(null);
     setResetModalSuccess(null);
 
-    const cleanTargetId = resetIdentifier.trim();
-    if (isSupabaseConfigured && !isRecoverySession) {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanTargetId)) {
-        setResetModalError('Enter the email address registered to your account.');
-        return;
-      }
-      setIsResetting(true);
-      try {
-        await sendPasswordReset(cleanTargetId);
-        setResetLinkSent(true);
-        setResetModalSuccess('If an account uses that email, a password reset link has been sent. Check your inbox and spam folder.');
-      } catch (error) {
-        setResetModalError(error instanceof Error ? error.message : 'Could not send a password reset email. Please try again.');
-      } finally {
-        setIsResetting(false);
-      }
+    const cleanTargetId = normalizeInstitutionalIdentifier(resetIdentifier);
+    if (!cleanTargetId) {
+      setResetModalError('Enter your registered Matric Number, Registration Number, or Staff ID.');
       return;
     }
 
@@ -188,17 +137,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
     setIsResetting(true);
     try {
-      if (isSupabaseConfigured && isRecoverySession) {
-        const result = await completePasswordRecovery(resetNewPassword);
-        if (!result.success || !result.profile) {
-          setResetModalError(result.error || 'Could not update your password. Request a new recovery link and try again.');
-          return;
-        }
-        setIsRecoverySession(false);
-        setShowResetModal(false);
-        onLoginSuccess(result.profile, false);
-        return;
-      }
       const res = await resetPasswordDirectly(cleanTargetId, resetNewPassword);
       if (!res.success) {
         setResetModalError(res.error || 'Failed to reset password. Please check your details.');
@@ -221,32 +159,16 @@ export const AuthView: React.FC<AuthViewProps> = ({
   };
 
   // 1. Unified Login Handler
-  const handleSendLoginLink = async () => {
-    setErrorMessage(null);
-    setSuccessMessage(null);
-    setIsLoading(true);
-    try {
-      await sendLoginLink(identifier);
-      setLoginLinkSent(true);
-      setSuccessMessage('If an account uses that email, a sign-in link has been sent. Check your inbox and spam folder.');
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Could not send a sign-in link. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
-    setConfirmationEmail(null);
     setIsLoading(true);
 
     try {
       const result = await signInAccount(identifier, password);
       if (!result.success || !result.profile) {
-        setErrorMessage(result.error || 'Access denied. Check your email and password.');
+        setErrorMessage(result.error || 'Access denied. Check your matric/registration number and password.');
         return;
       }
       if (result.isFirstLogin) {
@@ -269,12 +191,16 @@ export const AuthView: React.FC<AuthViewProps> = ({
     }
   };
 
-  // 2. Student Registration Handler (Without Results/Transcript Upload Requirement)
+  // 2. Student Registration Handler (Matric / Registration Number only, no email)
   const handleStudentSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
-    setConfirmationEmail(null);
+    const normalizedMatric = normalizeInstitutionalIdentifier(matricNumber);
+    if (!normalizedMatric) {
+      setErrorMessage('Please enter a valid Matric Number or Registration Number.');
+      return;
+    }
     if (signupPassword.length < 8) {
       setErrorMessage('Choose a password with at least 8 characters.');
       return;
@@ -292,12 +218,11 @@ export const AuthView: React.FC<AuthViewProps> = ({
     try {
       const result = await signUpAccount({
         name: fullName,
-        email: signupEmail,
         password: signupPassword,
         role: 'student',
         department,
         faculty,
-        matricNo: matricNumber.trim().toUpperCase(),
+        matricNo: normalizedMatric,
         level: studentLevel,
         admissionSession: admissionSession,
         entryMode: entryMode,
@@ -305,11 +230,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
       if (!result.success) {
         setErrorMessage(result.error || 'Registration failed. Please verify your submitted details.');
-        return;
-      }
-
-      if (result.confirmationRequired) {
-        setConfirmationEmail(signupEmail.trim().toLowerCase());
         return;
       }
 
@@ -423,7 +343,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                {isSupabaseConfigured ? 'Email Address' : 'Institutional Identifier'}
+                Matric / Registration Number (or Staff ID)
               </label>
               <div className="relative">
                 <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-[18px]">
@@ -431,16 +351,15 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </span>
                 <input
                   id="login-identifier-input"
-                  type={isSupabaseConfigured ? 'email' : 'text'}
+                  type="text"
                   required
                   autoComplete="username"
                   value={identifier}
                   onChange={(e) => {
                     setIdentifier(e.target.value);
-                    setLoginLinkSent(false);
                     setErrorMessage(null);
                   }}
-                  placeholder={isSupabaseConfigured ? 'name@lasu.edu.ng' : 'Email, Matric No, or Staff ID'}
+                  placeholder="e.g. CSC/21/0045, DN241728997045, or STAFF/CSC/088"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2.5 pl-10 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 dark:focus:border-emerald-500 shadow-2xs"
                 />
               </div>
@@ -460,8 +379,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     setResetModalError(null);
                     setResetModalSuccess(null);
                     setResetIdentifier(identifier);
-                    setResetLinkSent(false);
-                    setIsRecoverySession(false);
                     setShowResetModal(true);
                   }}
                   className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold hover:underline cursor-pointer bg-transparent border-0 p-0"
@@ -504,12 +421,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </>
               )}
             </button>
-            {isSupabaseConfigured && (
-              <button type="button" onClick={handleSendLoginLink} disabled={isLoading || loginLinkSent}
-                className="w-full text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50">
-                {loginLinkSent ? 'Sign-in link sent' : 'Email me a sign-in link'}
-              </button>
-            )}
           </form>
 
           <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
@@ -551,7 +462,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     key={acc.id}
                     type="button"
                     onClick={() => {
-                      setIdentifier(acc.email);
+                      setIdentifier(acc.matricNo || acc.staffId || '');
                       setPassword(acc.password);
                       setErrorMessage(null);
                     }}
@@ -565,7 +476,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                         </span>
                       </span>
                       <span className="text-slate-500 dark:text-slate-400 font-mono text-[10px]">
-                        {acc.email} • Pass: {acc.password}
+                        {acc.matricNo || acc.staffId} • Pass: {acc.password}
                       </span>
                     </div>
                     <span className="material-symbols-outlined text-[16px] text-slate-400 group-hover:text-emerald-500">
@@ -760,41 +671,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             </div>
           )}
 
-          {confirmationEmail ? (
-            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-950/30 p-5 text-center">
-              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/70 text-emerald-700 dark:text-emerald-300">
-                <span className="material-symbols-outlined text-[26px]">mark_email_read</span>
-              </div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Check your email to confirm</h3>
-              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                We sent a confirmation link to <strong className="break-all text-slate-800 dark:text-slate-100">{confirmationEmail}</strong>.
-                Open it to verify your account. If it is not in your inbox, check your spam folder.
-              </p>
-              <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                After verification, you will see a success page with a button back to sign in.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentifier(confirmationEmail);
-                  navigateTo('login');
-                }}
-                className="mt-5 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-800"
-              >
-                Continue to sign in
-                <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleResendConfirmation}
-                disabled={isLoading}
-                className="mt-3 block w-full text-xs font-semibold text-emerald-800 underline-offset-4 hover:underline disabled:opacity-60 dark:text-emerald-300"
-              >
-                {isLoading ? 'Sending…' : 'Resend confirmation email'}
-              </button>
-            </div>
-          ) : (
-          /* Registration Form (Strictly without result/transcript upload field) */
+          {/* Registration Form (Matric / Registration Number only, no email) */}
           <form onSubmit={handleStudentSignupSubmit} className="space-y-3.5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -859,7 +736,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Matric number
+                  Matric / Registration Number
                 </label>
                 <input
                   id="student-matric-input"
@@ -867,7 +744,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   required
                   value={matricNumber}
                   onChange={(e) => setMatricNumber(e.target.value)}
-                  placeholder="e.g. CSC/21/0045"
+                  placeholder="e.g. CSC/21/0045 or DN241728997045"
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
                 />
               </div>
@@ -950,22 +827,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Email Address
-                </label>
-                <input
-                  id="student-email-input"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={signupEmail}
-                  onChange={(e) => setSignupEmail(e.target.value)}
-                  placeholder="student@lasu.edu.ng"
-                  className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   Password
                 </label>
                 <input
@@ -980,11 +841,11 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Confirm Password</label>
-              <input id="student-confirm-password-input" type="password" required minLength={8} value={confirmSignupPassword} onChange={(e) => setConfirmSignupPassword(e.target.value)} autoComplete="new-password" placeholder="Re-enter your password" className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs" />
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Confirm Password</label>
+                <input id="student-confirm-password-input" type="password" required minLength={8} value={confirmSignupPassword} onChange={(e) => setConfirmSignupPassword(e.target.value)} autoComplete="new-password" placeholder="Re-enter your password" className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs" />
+              </div>
             </div>
 
             <button
@@ -1003,7 +864,6 @@ export const AuthView: React.FC<AuthViewProps> = ({
               )}
             </button>
           </form>
-          )}
 
           {/* Navigation Links */}
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-2">
@@ -1100,22 +960,21 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </div>
               )}
 
-              {!isRecoverySession && <div>
+              <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  {isSupabaseConfigured ? 'Registered email address' : resetAccountType === 'student' ? 'Student Email or Matric Number' : 'Staff Email or Staff ID'}
+                  {resetAccountType === 'student' ? 'Matric / Registration Number' : 'Staff ID'}
                 </label>
                 <input
-                  type={isSupabaseConfigured ? 'email' : 'text'}
+                  type="text"
                   required
-                  placeholder={isSupabaseConfigured ? 'name@lasu.edu.ng' : resetAccountType === 'student' ? 'Email or CSC/21/0045' : 'Email or STAFF/CSC/088'}
+                  placeholder={resetAccountType === 'student' ? 'e.g. CSC/21/0045 or DN241728997045' : 'e.g. STAFF/CSC/088'}
                   value={resetIdentifier}
-                  onChange={(e) => { setResetIdentifier(e.target.value); setResetLinkSent(false); setResetModalSuccess(null); }}
+                  onChange={(e) => { setResetIdentifier(e.target.value); setResetModalSuccess(null); }}
                   className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                 />
-                {isSupabaseConfigured && <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">We will send a secure, one-time reset link to this address.</p>}
-              </div>}
+              </div>
 
-              {(!isSupabaseConfigured || isRecoverySession) && <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                     New Password
@@ -1142,7 +1001,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
                   />
                 </div>
-              </div>}
+              </div>
 
               <div className="pt-2 flex gap-3">
                 <button
@@ -1150,17 +1009,17 @@ export const AuthView: React.FC<AuthViewProps> = ({
                   onClick={() => setShowResetModal(false)}
                   className="flex-1 py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
-                  {resetLinkSent ? 'Close' : 'Cancel'}
+                  Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isResetting || (resetLinkSent && isSupabaseConfigured && !isRecoverySession)}
+                  disabled={isResetting}
                   className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   {isResetting ? (
                     <span className="material-symbols-outlined animate-spin text-[16px]">sync</span>
                   ) : (
-                    <span>{isSupabaseConfigured && !isRecoverySession ? resetLinkSent ? 'Link sent' : 'Send reset link' : 'Update password'}</span>
+                    <span>Update password</span>
                   )}
                 </button>
               </div>
