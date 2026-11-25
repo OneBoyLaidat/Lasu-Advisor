@@ -6,6 +6,7 @@ import {
   LECTURER_AVATAR,
   DEAN_AVATAR,
 } from '../constants/assets';
+import { internalAuthEmail, normalizeInstitutionalIdentifier } from './institutionalIdentity';
 
 export interface RegisteredAccount {
   id: string;
@@ -276,7 +277,7 @@ export function authenticateUser(
   if (!cleanId) {
     return {
       success: false,
-      error: 'Please enter your registered Email address, Matric Number, or Staff ID.',
+      error: 'Please enter your registered matriculation or registration number.',
     };
   }
 
@@ -289,13 +290,11 @@ export function authenticateUser(
 
   const accounts = getRegisteredAccounts();
 
-  // Match by email, matricNo, staffId, or admin shortcut (case insensitive)
+  // Institutional identifiers are the only user-facing login identity.
   const matched = accounts.find((acc) => {
-    const emailMatch = acc.email.toLowerCase() === cleanId;
     const matricMatch = acc.matricNo && acc.matricNo.toLowerCase() === cleanId;
     const staffMatch = acc.staffId && acc.staffId.toLowerCase() === cleanId;
-    const adminShortcut = acc.role === 'admin' && (cleanId === 'admin' || cleanId === 'superadmin' || cleanId === 'super_admin');
-    return emailMatch || matricMatch || staffMatch || adminShortcut;
+    return matricMatch || staffMatch;
   });
 
   if (!matched) {
@@ -319,11 +318,10 @@ export function authenticateUser(
 
   const finalRole = matched.role;
 
-  const isFirstLogin = !matched.hasLoggedInBefore && !hasUserLoggedInBefore(matched.id) && !hasUserLoggedInBefore(matched.email);
+  const isFirstLogin = !matched.hasLoggedInBefore && !hasUserLoggedInBefore(matched.id);
 
   if (isFirstLogin) {
     markUserAsLoggedIn(matched.id);
-    markUserAsLoggedIn(matched.email);
     matched.hasLoggedInBefore = true;
     saveRegisteredAccounts(accounts);
   }
@@ -361,7 +359,7 @@ export function authenticateUser(
 
 export function registerNewUser(data: {
   name: string;
-  email: string;
+  email?: string;
   password: string;
   role: UserRole;
   department: string;
@@ -378,17 +376,12 @@ export function registerNewUser(data: {
   hasUploadedTranscript?: boolean;
   transcriptFileName?: string;
 }): AuthResult {
-  const cleanEmail = data.email.trim().toLowerCase();
   const cleanName = data.name.trim();
   const cleanPass = data.password.trim();
-  const cleanId = (data.matricNo || data.staffId || '').trim();
+  const cleanId = normalizeInstitutionalIdentifier(data.matricNo || data.staffId || '');
 
   if (!cleanName || cleanName.length < 2) {
     return { success: false, error: 'Please enter a valid full name.' };
-  }
-
-  if (!cleanEmail || !cleanEmail.includes('@')) {
-    return { success: false, error: 'Please enter a valid institutional or personal email address.' };
   }
 
   if (!cleanPass || cleanPass.length < 8) {
@@ -419,7 +412,6 @@ export function registerNewUser(data: {
   // Check duplicate
   const exists = accounts.some(
     (acc) =>
-      acc.email.toLowerCase() === cleanEmail ||
       (acc.matricNo && acc.matricNo.toLowerCase() === cleanId.toLowerCase()) ||
       (acc.staffId && acc.staffId.toLowerCase() === cleanId.toLowerCase())
   );
@@ -427,7 +419,7 @@ export function registerNewUser(data: {
   if (exists) {
     return {
       success: false,
-      error: 'An account with this email address or Matric/Staff ID is already registered. Please sign in.',
+      error: 'An account with this matriculation or registration number is already registered. Please sign in.',
     };
   }
 
@@ -439,7 +431,7 @@ export function registerNewUser(data: {
   const newAccount: RegisteredAccount = {
     id: `usr_${Date.now()}`,
     name: cleanName,
-    email: cleanEmail,
+    email: internalAuthEmail(cleanId),
     password: cleanPass,
     role: data.role,
     department: data.department,

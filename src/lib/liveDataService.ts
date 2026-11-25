@@ -3,6 +3,7 @@ import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConver
 import { AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember, clearMustChangePassword, hasUserLoggedInBefore, markUserAsLoggedIn } from './authService';
 import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
 import { getCurrentAcademicSession, getCurrentSemesterKey, nextAcademicSession, setActiveAcademicSession } from './academicUtils';
+import { internalAuthEmail, normalizeInstitutionalIdentifier } from './institutionalIdentity';
 
 type ProfileRow = {
   user_id: string;
@@ -113,9 +114,7 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
 }
 
 export async function signInAccount(identifier: string, password: string): Promise<AuthResult> {
-  // Local accounts are a development-only demo path. Live accounts must always
-  // authenticate through Supabase so email confirmation and server-side roles
-  // cannot be bypassed by a stale browser-local account.
+  // Local accounts are a development-only demo path.
   const localAuth = authenticateUser(identifier, password);
   if (!isSupabaseConfigured && localAuth.success && localAuth.profile) {
     const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(localAuth.profile.email);
@@ -133,22 +132,18 @@ export async function signInAccount(identifier: string, password: string): Promi
   }
   const client = getSupabaseClient();
   if (!client) return { success: false, error: 'Authentication service is unavailable.' };
-  if (!identifier.includes('@')) {
-    return { success: false, error: 'Use the email address on your LASU Advisor account to sign in.' };
-  }
+  const normalizedIdentifier = normalizeInstitutionalIdentifier(identifier);
+  if (!normalizedIdentifier) return { success: false, error: 'Enter your matriculation or registration number.' };
   let signInResponse: Awaited<ReturnType<typeof client.auth.signInWithPassword>>;
   try {
-    signInResponse = await client.auth.signInWithPassword({ email: identifier.trim().toLowerCase(), password });
+    signInResponse = await client.auth.signInWithPassword({ email: internalAuthEmail(normalizedIdentifier), password });
   } catch (connectionError) {
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
   const { data, error } = signInResponse;
   if (error) {
-    if (error.code === 'email_not_confirmed') {
-      return { success: false, error: 'Please verify your email from the latest confirmation message before signing in. You can request a new link from the registration screen.' };
-    }
     if (error.code === 'invalid_credentials') {
-      return { success: false, error: 'Email or password is incorrect. If you just registered, confirm your email from the latest verification message before signing in.' };
+      return { success: false, error: 'Matriculation/registration number or password is incorrect.' };
     }
     return { success: false, error: error.message };
   }
@@ -172,77 +167,27 @@ export async function signInAccount(identifier: string, password: string): Promi
   }
 }
 
-export async function signUpAccount(data: Parameters<typeof registerNewUser>[0]): Promise<AuthResult & { confirmationRequired?: boolean }> {
+export async function signUpAccount(data: Parameters<typeof registerNewUser>[0]): Promise<AuthResult> {
   if (!isSupabaseConfigured) {
     // Keep the local demo mode available during development, but never let a
     // malformed/partially configured Supabase setup silently create a demo user.
     if (import.meta.env.PROD) return { success: false, error: supabaseConfigurationError || 'Live authentication is not configured.' };
     return registerNewUser(data);
   }
-  const client = getSupabaseClient();
-  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
   if (data.role !== 'student') return { success: false, error: 'Staff accounts are provisioned by faculty administrators. Please request an invitation.' };
-  const emailRedirectTo = typeof window === 'undefined' ? undefined : new URL('/email-verified.html', window.location.origin).toString();
-  let signupResponse: Awaited<ReturnType<typeof client.auth.signUp>>;
+  const matricNo = normalizeInstitutionalIdentifier(data.matricNo || '');
+  if (!matricNo) return { success: false, error: 'A matriculation or registration number is required.' };
   try {
-    signupResponse = await client.auth.signUp({
-      email: data.email.trim().toLowerCase(),
-      password: data.password,
-      options: {
-        emailRedirectTo,
-        data: {
-          account_type: 'student',
-          full_name: data.name.trim(),
-          department: data.department,
-          faculty: data.faculty,
-          matric_no: data.matricNo.trim().toUpperCase(),
-          level: data.level,
-          admission_session: data.admissionSession,
-        },
-      },
+    const response = await fetch('/.netlify/functions/student-register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...data, matricNo }),
     });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return { success: false, error: payload.error || 'Could not create the student account.' };
   } catch (connectionError) {
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
-  const { data: result, error } = signupResponse;
-  if (error) {
-    const message = error.message || '';
-    if (/matric_no_normalized|duplicate key|23505/i.test(message)) {
-      return { success: false, error: 'An account already uses this matric number. Check the number or contact your department office.' };
-    }
-    if (/already registered|already been registered|user already exists/i.test(message)) {
-      return { success: false, error: 'An account already uses this email address. Sign in or reset its password.' };
-    }
-    return { success: false, error: message };
-  }
-  if (!result.session) {
-    return { success: true, confirmationRequired: true };
-  }
-  if (!result.user) return { success: false, error: 'Account was created, but its identity could not be loaded. Please sign in.' };
-  try {
-    const profile = await getProfileForUser(result.user);
-    return profile ? { success: true, profile } : { success: false, error: 'Account created, but profile setup has not completed. Try signing in again shortly.' };
-  } catch (profileError) {
-    return { success: false, error: profileError instanceof Error ? profileError.message : 'Could not create your profile.' };
-  }
-}
-
-export async function resendSignupConfirmation(email: string): Promise<AuthResult> {
-  const client = getSupabaseClient();
-  if (!client || !isSupabaseConfigured) {
-    return { success: false, error: supabaseConfigurationError || 'Email confirmation is available for live accounts only.' };
-  }
-  const emailRedirectTo = typeof window === 'undefined' ? undefined : new URL('/email-verified.html', window.location.origin).toString();
-  try {
-    const { error } = await client.auth.resend({
-      type: 'signup',
-      email: email.trim().toLowerCase(),
-      options: { emailRedirectTo },
-    });
-    return error ? { success: false, error: error.message } : { success: true };
-  } catch (connectionError) {
-    return { success: false, error: describeSupabaseConnectionError(connectionError) };
-  }
+  return signInAccount(matricNo, data.password);
 }
 
 export async function getCurrentProfile(): Promise<UserProfile | null> {
