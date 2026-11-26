@@ -844,15 +844,43 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Confirm Password</label>
-                <input id="student-confirm-password-input" type="password" required minLength={8} value={confirmSignupPassword} onChange={(e) => setConfirmSignupPassword(e.target.value)} autoComplete="new-password" placeholder="Re-enter your password" className="w-full bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-emerald-600 shadow-2xs" />
+                <input
+                  id="student-confirm-password-input"
+                  type="password"
+                  required
+                  minLength={8}
+                  value={confirmSignupPassword}
+                  onChange={(e) => setConfirmSignupPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="Re-enter your password"
+                  className={`w-full bg-white dark:bg-slate-800/90 border rounded-lg py-2 px-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none shadow-2xs ${
+                    confirmSignupPassword.length > 0 && signupPassword !== confirmSignupPassword
+                      ? 'border-rose-500 focus:border-rose-600'
+                      : confirmSignupPassword.length > 0 && signupPassword === confirmSignupPassword
+                        ? 'border-emerald-500 focus:border-emerald-600'
+                        : 'border-slate-200 dark:border-slate-700 focus:border-emerald-600'
+                  }`}
+                />
+                {confirmSignupPassword.length > 0 && (
+                  <p className={`mt-1 text-[11px] font-medium flex items-center gap-1 ${
+                    signupPassword === confirmSignupPassword
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}>
+                    <span className="material-symbols-outlined text-[14px]">
+                      {signupPassword === confirmSignupPassword ? 'check_circle' : 'error'}
+                    </span>
+                    {signupPassword === confirmSignupPassword ? 'Passwords match' : 'Passwords do not match'}
+                  </p>
+                )}
               </div>
             </div>
 
             <button
               id="submit-student-signup-btn"
               type="submit"
-              disabled={isLoading}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-3 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              disabled={isLoading || (confirmSignupPassword.length > 0 && signupPassword !== confirmSignupPassword)}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-lg text-xs uppercase tracking-wider mt-3 transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
             >
               {isLoading ? (
                 <span className="material-symbols-outlined animate-spin text-[20px]">sync</span>

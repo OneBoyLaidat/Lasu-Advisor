@@ -6,8 +6,8 @@ import { parseTranscriptText } from '../src/lib/transcriptTextParser';
 test('normalizes matriculation and registration numbers consistently', () => {
   assert.equal(normalizeInstitutionalIdentifier(' csc/21/0045 '), 'CSC/21/0045');
   assert.equal(normalizeInstitutionalIdentifier('dn241728997045'), 'DN241728997045');
-  assert.equal(internalAuthEmail('DN241728997045'), 'id-dn241728997045@accounts.lasu.invalid');
-  assert.equal(internalAuthEmail('CSC/21/0045'), 'id-csc-21-0045@accounts.lasu.invalid');
+  assert.equal(internalAuthEmail('DN241728997045'), 'id-dn241728997045@lasu.edu.ng');
+  assert.equal(internalAuthEmail('CSC/21/0045'), 'id-csc-21-0045@lasu.edu.ng');
 });
 
 test('extracts application/registration number and courses from sample LASU statement of results', () => {

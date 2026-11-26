@@ -30,7 +30,7 @@ export const normalizeIdentifier = (value: unknown): string =>
   String(value || '').trim().toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9/_-]/g, '');
 
 export const internalEmail = (identifier: string): string =>
-  `id-${normalizeIdentifier(identifier).replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()}@accounts.lasu.invalid`;
+  `id-${normalizeIdentifier(identifier).replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()}@lasu.edu.ng`;
 
 export const isStrongPassword = (value: string): boolean =>
   value.length >= 8 &&

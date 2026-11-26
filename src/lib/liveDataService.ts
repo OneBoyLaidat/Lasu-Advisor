@@ -225,6 +225,9 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
         if (/already registered/i.test(signUpError.message)) {
           return { success: false, error: 'An account already uses this matriculation or registration number.' };
         }
+        if (/email/i.test(signUpError.message)) {
+          return { success: false, error: 'Could not register this matriculation or registration number. Please check the format and try again.' };
+        }
         return { success: false, error: signUpError.message || 'Could not create the student account.' };
       }
       if (signUpData.session && signUpData.user) {
