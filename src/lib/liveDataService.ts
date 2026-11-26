@@ -68,6 +68,14 @@ const detailsToRow = (profile: UserProfile) => profile.role === 'student' ? ({
   phone: profile.phone || null,
 });
 
+const getErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
+    return (error as { message: string }).message || fallback;
+  }
+  return fallback;
+};
+
 async function getProfileForUser(user: User): Promise<UserProfile | null> {
   const client = getSupabaseClient();
   if (!client) return null;
@@ -81,26 +89,30 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
   const { data: details, error: detailsError } = await client.from(detailTable).select('*').eq('user_id', user.id).maybeSingle();
   // The shared profile row is sufficient to identify an authorized role and
   // route the user. A missing/temporarily unavailable detail table must not
-  // send an authenticated administrator back to the sign-in screen.
+  // send an authenticated user back to the sign-in screen.
   if (detailsError) console.warn(`Could not load ${detailTable} details for the signed-in profile`, detailsError);
   const profile = profileFromRow({ ...identityRow, role }, details || {});
   if (role === 'student') {
     const { data: latestResult, error: resultError } = await client.from('student_results')
       .select('file_name').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
-    if (resultError) throw resultError;
-    profile.hasUploadedTranscript = Boolean(latestResult);
-    profile.transcriptFileName = latestResult?.file_name || undefined;
+    if (resultError) {
+      console.warn('Could not load latest student_results for the signed-in profile', resultError);
+    } else {
+      profile.hasUploadedTranscript = Boolean(latestResult);
+      profile.transcriptFileName = latestResult?.file_name || undefined;
+    }
   }
   if (profile.role === 'student' && profile.admissionSession && profile.level) {
     const { data: assignment, error: assignmentError } = await client.from('adviser_assignments').select('adviser_id').eq('department', profile.department).eq('admission_session', profile.admissionSession).eq('level', profile.level).maybeSingle();
-    if (assignmentError) throw assignmentError;
-    if (assignment) {
+    if (assignmentError) {
+      console.warn('Could not load adviser_assignments for the signed-in profile', assignmentError);
+    } else if (assignment) {
       const [{ data: adviser, error: adviserError }, { data: adviserDetails, error: adviserDetailsError }] = await Promise.all([
         client.from('profiles').select('full_name,email,department').eq('user_id', assignment.adviser_id).maybeSingle(),
         client.from('staff_profiles').select('avatar_url').eq('user_id', assignment.adviser_id).maybeSingle(),
       ]);
-      if (adviserError) throw adviserError;
-      if (adviserDetailsError) throw adviserDetailsError;
+      if (adviserError) console.warn('Could not load assigned adviser profile', adviserError);
+      if (adviserDetailsError) console.warn('Could not load assigned adviser details', adviserDetailsError);
       if (adviser) {
         profile.assignedAdviserId = assignment.adviser_id;
         profile.assignedAdviserName = adviser.full_name;
@@ -163,7 +175,7 @@ export async function signInAccount(identifier: string, password: string): Promi
     return { success: true, profile, isFirstLogin };
   } catch (profileError) {
     await client.auth.signOut();
-    return { success: false, error: profileError instanceof Error ? profileError.message : 'Could not load your profile.' };
+    return { success: false, error: getErrorMessage(profileError, 'Could not load your profile.') };
   }
 }
 
