@@ -5,7 +5,7 @@ interface LecturerDashboardProps {
   advisees: Advisee[];
   agendaItems: AgendaItem[];
   onOpenIntervention: (studentName?: string) => void;
-  onOpenEmailModal: (targetStudents?: string[]) => void;
+  onOpenNoticeModal: (targetStudents?: string[]) => void;
   onViewStudentDetails: (advisee: Advisee) => void;
   onToggleAgendaReminder: (id: string) => void;
   onAddAgendaItem: () => void;
@@ -19,7 +19,7 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
   advisees,
   agendaItems,
   onOpenIntervention,
-  onOpenEmailModal,
+  onOpenNoticeModal,
   onViewStudentDetails,
   onToggleAgendaReminder,
   onAddAgendaItem,
@@ -502,7 +502,7 @@ export const LecturerDashboard: React.FC<LecturerDashboardProps> = ({
           <div className="flex items-center gap-2">
             {strugglingStudents.length > 0 && (
               <button
-                onClick={() => onOpenEmailModal(strugglingStudents.map((s) => s.name))}
+                onClick={() => onOpenNoticeModal(strugglingStudents.map((s) => s.name))}
                 className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 py-1.5 px-3 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 shadow-2xs"
               >
                 <span className="material-symbols-outlined text-[14px]">mail</span>

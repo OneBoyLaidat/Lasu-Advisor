@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload, LASU_DEPARTMENTS } from '../types';
 import { loadStaffDirectory, loadAdministrators, registerAdministratorAccount, updateAdministratorProfile, loadDepartmentHodAssignments, setDepartmentHod, updateStaffProfile, registerStaffAccount, resetPasswordDirectly, resetStaffCredentials, updateStaffMember, deleteStaffMember, revokeStaffAccess, loadActiveAcademicSession, startNewAcademicSession, StaffProfileUpdate, AdministratorProfileUpdate } from '../lib/liveDataService';
 import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient';
-import { internalAuthEmail, normalizeInstitutionalIdentifier } from '../lib/institutionalIdentity';
+import { normalizeInstitutionalIdentifier } from '../lib/institutionalIdentity';
 
 interface AdminPortalViewProps {
   userProfile: UserProfile;
@@ -45,7 +45,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isAdminRegistrationOpen, setIsAdminRegistrationOpen] = useState(false);
   const [adminForm, setAdminForm] = useState<AdministratorRegistrationPayload>(() => ({
-    name: '', email: '', staffId: '', department: LASU_DEPARTMENTS[0],
+    name: '', staffId: '', department: LASU_DEPARTMENTS[0],
     faculty: userProfile.faculty || 'Faculty of Computing & Information Technology', phone: '',
     password: generateStaffPassword(),
   }));
@@ -62,7 +62,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   // Registration Modal state
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState<boolean>(false);
   const [formName, setFormName] = useState<string>('');
-  const [formEmail, setFormEmail] = useState<string>('');
   const [formStaffId, setFormStaffId] = useState<string>('');
   const [formRole, setFormRole] = useState<'lecturer' | 'hod' | 'dean'>('lecturer');
   const [formDept, setFormDept] = useState<string>(userProfile.department || 'Computer Science');
@@ -76,7 +75,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const [modalError, setModalError] = useState<string | null>(null);
   const [createdCredentials, setCreatedCredentials] = useState<{
     name: string;
-    email: string;
     staffId: string;
     password: string;
     role: string;
@@ -146,7 +144,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
   const filteredStaff = staffList.filter((staff) => {
     const matchesSearch =
       staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       staff.staffId.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole =
       selectedRoleFilter === 'All' ||
@@ -175,10 +172,8 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
     try {
       const cleanStaffId = normalizeInstitutionalIdentifier(formStaffId);
-      const internalEmail = formEmail.trim().toLowerCase() || (cleanStaffId ? internalAuthEmail(cleanStaffId) : '');
       const payload: ManualStaffRegistrationPayload = {
         name: formName.trim(),
-        email: internalEmail,
         staffId: cleanStaffId,
         role: formRole,
         department: formDept,
@@ -199,7 +194,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       await refreshStaffList();
       setCreatedCredentials({
         name: payload.name,
-        email: payload.email,
         staffId: payload.staffId,
         password: result.generatedPassword || formPassword,
         role: payload.role === 'hod' ? 'Head of Department' : payload.role === 'dean' ? 'Dean of Faculty' : 'Lecturer / Adviser',
@@ -210,7 +204,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
       // Reset form fields
       setFormName('');
-      setFormEmail('');
       setFormStaffId('');
       setFormPhone('');
       // regenerate secure password for next registration
@@ -332,8 +325,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
     setIsCreatingAdmin(true);
     try {
       const cleanStaffId = normalizeInstitutionalIdentifier(adminForm.staffId);
-      const internalEmail = adminForm.email.trim().toLowerCase() || (cleanStaffId ? internalAuthEmail(cleanStaffId) : '');
-      const payload = { ...adminForm, name: adminForm.name.trim(), email: internalEmail, staffId: cleanStaffId };
+      const payload = { ...adminForm, name: adminForm.name.trim(), staffId: cleanStaffId };
       const result = await registerAdministratorAccount(payload);
       if (!result.success) {
         setAdminFormError(result.error || 'Could not register the administrator.');
@@ -341,7 +333,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       }
       await refreshStaffList();
       setNewAdminCredentials(payload);
-      setAdminForm((current) => ({ ...current, name: '', email: '', staffId: '', phone: '', password: generateStaffPassword() }));
+      setAdminForm((current) => ({ ...current, name: '', staffId: '', phone: '', password: generateStaffPassword() }));
     } catch (error) {
       setAdminFormError(error instanceof Error ? error.message : 'Could not register the administrator.');
     } finally { setIsCreatingAdmin(false); }
@@ -497,7 +489,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {administratorList.map((administrator) => (
                   <tr key={administrator.id}>
-                    <td className="px-3 py-3"><div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-slate-900 text-white dark:bg-emerald-800"><span className="material-symbols-outlined text-[18px]">shield_person</span></span><div><p className="font-semibold text-slate-900 dark:text-slate-100">{administrator.name}</p><p className="mt-0.5 text-[11px] text-slate-500">{administrator.email}</p></div></div></td>
+                    <td className="px-3 py-3"><div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center rounded-full bg-slate-900 text-white dark:bg-emerald-800"><span className="material-symbols-outlined text-[18px]">shield_person</span></span><div><p className="font-semibold text-slate-900 dark:text-slate-100">{administrator.name}</p><p className="mt-0.5 text-[11px] text-slate-500">{administrator.department}</p></div></div></td>
                     <td className="px-3 py-3 font-mono">{administrator.staffId}</td>
                     <td className="px-3 py-3">{administrator.department}</td>
                     <td className="px-3 py-3">{administrator.faculty}</td>
@@ -534,7 +526,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search staff, ID, or email..."
+                placeholder="Search staff name or ID..."
                 className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg py-1.5 pl-8 pr-3 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:border-emerald-600 shadow-2xs"
               />
             </div>
@@ -583,7 +575,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                         </div>
                         <div>
                           <p className="font-bold text-slate-900 dark:text-slate-100">{staff.name}</p>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">{staff.email}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">{staff.faculty}</p>
                         </div>
                       </div>
                     </td>
@@ -674,12 +666,11 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                 </div>
                 <dl className="space-y-2 rounded-xl bg-slate-50 p-4 text-xs dark:bg-slate-800/60">
                   <div className="flex justify-between gap-3"><dt className="text-slate-500">Name</dt><dd className="font-semibold">{newAdminCredentials.name}</dd></div>
-                  <div className="flex justify-between gap-3"><dt className="text-slate-500">Email</dt><dd className="font-mono">{newAdminCredentials.email}</dd></div>
                   <div className="flex justify-between gap-3"><dt className="text-slate-500">Staff ID</dt><dd className="font-mono">{newAdminCredentials.staffId}</dd></div>
                   <div className="flex justify-between gap-3 border-t border-slate-200 pt-2 dark:border-slate-700"><dt className="font-semibold text-slate-500">Temporary password</dt><dd className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{newAdminCredentials.password}</dd></div>
                 </dl>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => { void navigator.clipboard.writeText(`LASU Advisor Administrator\nName: ${newAdminCredentials.name}\nEmail: ${newAdminCredentials.email}\nStaff ID: ${newAdminCredentials.staffId}\nTemporary password: ${newAdminCredentials.password}\nPortal: ${window.location.origin}/admin-portal`); }} className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-semibold dark:border-slate-700">Copy credentials</button>
+                  <button type="button" onClick={() => { void navigator.clipboard.writeText(`LASU Advisor Administrator\nName: ${newAdminCredentials.name}\nStaff ID: ${newAdminCredentials.staffId}\nTemporary password: ${newAdminCredentials.password}\nPortal: ${window.location.origin}/admin-portal`); }} className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-semibold dark:border-slate-700">Copy credentials</button>
                   <button type="button" onClick={() => { setNewAdminCredentials(null); setIsAdminRegistrationOpen(false); }} className="flex-1 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white">Done</button>
                 </div>
               </div>
@@ -705,7 +696,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
       {editAdminTarget && editAdminForm && (
         <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/65 p-4 backdrop-blur-sm">
           <form onSubmit={handleSaveAdministratorProfile} className="w-full max-w-xl space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-            <div className="border-b border-slate-100 pb-3 dark:border-slate-800"><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Edit administrator profile</h2><p className="mt-1 text-xs text-slate-500">{editAdminTarget.email}</p></div>
+            <div className="border-b border-slate-100 pb-3 dark:border-slate-800"><h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Edit administrator profile</h2><p className="mt-1 text-xs font-mono text-slate-500">{editAdminTarget.staffId}</p></div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <label className="text-xs font-semibold">Full name<input required value={editAdminForm.name} onChange={(e) => setEditAdminForm({ ...editAdminForm, name: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
               <label className="text-xs font-semibold">Staff ID<input required value={editAdminForm.staffId} onChange={(e) => setEditAdminForm({ ...editAdminForm, staffId: e.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" /></label>
@@ -725,7 +716,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
               <div>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Edit staff profile</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{editTarget.email}</p>
+                <p className="text-xs font-mono text-slate-500 dark:text-slate-400">{editTarget.staffId}</p>
               </div>
               <button type="button" onClick={() => { setEditTarget(null); setEditForm(null); }} aria-label="Close profile editor" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <span className="material-symbols-outlined">close</span>
@@ -824,10 +815,6 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     <span className="text-slate-500 dark:text-slate-400">Staff ID:</span>
                     <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{createdCredentials.staffId}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 dark:text-slate-400">Email Address:</span>
-                    <span className="font-mono text-slate-800 dark:text-slate-200">{createdCredentials.email}</span>
-                  </div>
                   <div className="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
                     <span className="text-slate-500 dark:text-slate-400 font-semibold">Login Password:</span>
                     <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded">
@@ -841,7 +828,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
                     type="button"
                     onClick={() => {
                       navigator.clipboard.writeText(
-                        `LASU Advisor Staff Credentials:\nStaff: ${createdCredentials.name}\nEmail: ${createdCredentials.email}\nStaff ID: ${createdCredentials.staffId}\nPassword: ${createdCredentials.password}\nPortal: ${window.location.origin}/#login`
+                        `LASU Advisor Staff Credentials:\nStaff: ${createdCredentials.name}\nStaff ID: ${createdCredentials.staffId}\nPassword: ${createdCredentials.password}\nPortal: ${window.location.origin}/#login`
                       );
                       alert('Credentials copied to clipboard!');
                     }}
@@ -1075,7 +1062,7 @@ export const AdminPortalView: React.FC<AdminPortalViewProps> = ({
 
               <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1">
                 <p className="font-semibold text-slate-800 dark:text-slate-200">{resetTargetStaff.name}</p>
-                <p className="font-mono text-slate-500 text-[11px]">{resetTargetStaff.staffId} • {resetTargetStaff.email}</p>
+                <p className="font-mono text-slate-500 text-[11px]">{resetTargetStaff.staffId} • {resetTargetStaff.department}</p>
               </div>
 
               <div>

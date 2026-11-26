@@ -523,14 +523,14 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
                       Review before saving
                     </span>
                     <span className="text-[11px] text-emerald-800/90 dark:text-emerald-300/80">
-                      {parsedData.courses.length} course records extracted from {parsedData.fileName}. Results are not saved until you verify the student name and confirm.
+                      {parsedData.courses.length} course records extracted from {parsedData.fileName}. Results are not saved until your matriculation / registration number is verified and you confirm.
                     </span>
                   </div>
                 </div>
               </div>
 
               <label className="block rounded-xl border border-slate-200 dark:border-slate-700 p-3.5 text-xs">
-                <span className="block font-bold text-slate-900 dark:text-slate-100 mb-1">Name on result document</span>
+                <span className="block font-bold text-slate-900 dark:text-slate-100 mb-1">Matriculation / Registration Number on result document</span>
                 <span className="block text-slate-500 dark:text-slate-400 mb-2">Must match your account matriculation / registration number: {expectedMatricNo || 'Not available'}</span>
                 <input value={parsedData.matricNo || parsedData.registrationNo || ''} readOnly aria-readonly="true" placeholder="Matriculation / registration number could not be read from this PDF" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-slate-900 dark:text-slate-100" />
               </label>

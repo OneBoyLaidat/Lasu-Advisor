@@ -35,7 +35,6 @@ Ref: DN241728997045 | 25 Nov 2026
 `;
 
   const parsed = parseTranscriptText(sampleText, 'sample-result.pdf');
-  assert.equal(parsed.studentName, 'AYOMIDE IFEDAYO DANIEL');
   assert.equal(parsed.matricNo, 'DN241728997045');
   assert.equal(parsed.registrationNo, 'DN241728997045');
   assert.ok(parsed.documentIdentifiers?.includes('DN241728997045'));
@@ -53,7 +52,6 @@ CSC 301 Operating Systems 3 25 55 80 A 5.00 15.0
 `;
 
   const parsed = parseTranscriptText(sampleText, 'transcript.pdf');
-  assert.equal(parsed.studentName, 'Michael Adebayo');
   assert.equal(parsed.matricNo, 'CSC/21/0045');
   assert.ok(parsed.documentIdentifiers?.includes('CSC/21/0045'));
   assert.equal(parsed.courses.length, 1);

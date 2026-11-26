@@ -29,10 +29,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const staffId = String(input.staffId || '').trim();
   if (!staffId) return sendJson(res, 400, { error: 'Staff ID is required.' });
 
+  const { data: staffRow } = await admin
+    .from('staff_profiles')
+    .select('user_id')
+    .eq('staff_id', staffId.toUpperCase())
+    .maybeSingle();
+  const targetUserId = staffRow?.user_id || staffId;
   const { data: target, error: targetError } = await admin
     .from('profiles')
     .select('user_id,role,department,faculty')
-    .or(`user_id.eq.${staffId},email.eq.${staffId}`)
+    .eq('user_id', targetUserId)
     .maybeSingle();
   if (targetError || !target) return sendJson(res, 404, { error: 'Staff account was not found.' });
 

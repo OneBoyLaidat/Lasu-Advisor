@@ -7,10 +7,10 @@ interface StudentMessagingViewProps {
   advisers: Adviser[];
   messages: ChatMessage[];
   threads: Record<string, ChatMessage[]>;
-  selectedAdviserEmail: string;
+  selectedAdviserId: string;
   archivedThreads?: ArchivedChatThread[];
-  onSelectAdviser: (email: string) => void;
-  onSendMessage: (adviserEmail: string, text: string) => void;
+  onSelectAdviser: (adviserId: string) => void;
+  onSendMessage: (adviserId: string, text: string) => void;
 }
 
 export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
@@ -18,18 +18,18 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
   advisers,
   messages,
   threads,
-  selectedAdviserEmail,
+  selectedAdviserId,
   archivedThreads = [],
   onSelectAdviser,
   onSendMessage,
 }) => {
   const [inputText, setInputText] = useState('');
   const [showArchives, setShowArchives] = useState(false);
-  const selectedAdviser = advisers.find((adviser) => adviser.email === selectedAdviserEmail) || null;
+  const selectedAdviser = advisers.find((adviser) => adviser.id === selectedAdviserId) || null;
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!inputText.trim() || !selectedAdviser) return;
-    onSendMessage(selectedAdviser.email, inputText.trim());
+    onSendMessage(selectedAdviser.id, inputText.trim());
     setInputText('');
   };
 
@@ -42,15 +42,15 @@ export const StudentMessagingView: React.FC<StudentMessagingViewProps> = ({
         </div>
         <div className="flex-1 overflow-y-auto">
           {advisers.length ? advisers.map((adviser) => {
-            const isActive = adviser.email === selectedAdviserEmail;
+            const isActive = adviser.id === selectedAdviserId;
             return (
-              <button key={adviser.email} type="button" onClick={() => onSelectAdviser(adviser.email)} className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-slate-100 dark:border-slate-800/80 transition-colors ${isActive ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
+              <button key={adviser.id} type="button" onClick={() => onSelectAdviser(adviser.id)} className={`w-full flex items-center gap-3 px-4 py-3 text-left border-b border-slate-100 dark:border-slate-800/80 transition-colors ${isActive ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
                 <img src={adviser.avatarUrl || ADVISER_AVATAR} alt="" className="w-11 h-11 rounded-full object-cover bg-slate-100 dark:bg-slate-800 shrink-0" />
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold truncate text-slate-900 dark:text-slate-100">{adviser.name}</span>
-                  <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">{threads[adviser.email]?.at(-1)?.text || adviser.title}</span>
+                  <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">{threads[adviser.id]?.at(-1)?.text || adviser.title}</span>
                 </span>
-                {(threads[adviser.email] || []).filter((message) => message.sender === 'adviser' && !message.isRead).length > 0 && <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" aria-label="Unread messages" />}
+                {(threads[adviser.id] || []).filter((message) => message.sender === 'adviser' && !message.isRead).length > 0 && <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" aria-label="Unread messages" />}
               </button>
             );
           }) : <p className="px-4 py-6 text-sm text-slate-500">No academic contacts are available yet.</p>}

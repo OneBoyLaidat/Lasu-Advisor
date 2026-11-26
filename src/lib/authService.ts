@@ -6,12 +6,11 @@ import {
   LECTURER_AVATAR,
   DEAN_AVATAR,
 } from '../constants/assets';
-import { internalAuthEmail, normalizeInstitutionalIdentifier } from './institutionalIdentity';
+import { normalizeInstitutionalIdentifier } from './institutionalIdentity';
 
 export interface RegisteredAccount {
   id: string;
   name: string;
-  email: string;
   password: string;
   role: UserRole;
   department: string;
@@ -24,7 +23,6 @@ export interface RegisteredAccount {
   entryMode?: EntryMode;
   assignedAdviserId?: string;
   assignedAdviserName?: string;
-  assignedAdviserEmail?: string;
   assignedAdviserAvatar?: string;
   assignedAdviserTitle?: string;
   avatarUrl: string;
@@ -41,7 +39,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
   {
     id: 'usr_student_01',
     name: 'Michael Adebayo',
-    email: 'm.adebayo@lasu.edu.ng',
     password: 'password123',
     role: 'student',
     department: 'Computer Science',
@@ -52,7 +49,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
     entryMode: 'utme',
     assignedAdviserId: 'adv_sarah',
     assignedAdviserName: 'Dr. Sarah Jenkins',
-    assignedAdviserEmail: 's.jenkins@lasu.edu.ng',
     assignedAdviserAvatar: ADVISER_AVATAR,
     assignedAdviserTitle: 'Assoc. Prof, Computer Science',
     avatarUrl: STUDENT_AVATAR,
@@ -62,7 +58,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
   {
     id: 'usr_lecturer_01',
     name: 'Dr. Sarah Jenkins',
-    email: 's.jenkins@lasu.edu.ng',
     password: 'password123',
     role: 'lecturer',
     department: 'Computer Science',
@@ -75,7 +70,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
   {
     id: 'usr_hod_01',
     name: 'Dr. James Miller',
-    email: 'j.miller@lasu.edu.ng',
     password: 'password123',
     role: 'hod',
     department: 'Computer Science',
@@ -86,7 +80,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
   {
     id: 'usr_admin_01',
     name: 'LASU System Admin',
-    email: 'admin@lasu.edu.ng',
     password: 'password123',
     role: 'admin',
     department: 'Computer Science',
@@ -98,7 +91,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
   {
     id: 'usr_dean_01',
     name: 'Prof. A. Chen',
-    email: 'a.chen@lasu.edu.ng',
     password: 'password123',
     role: 'dean',
     department: 'Computer Science',
@@ -110,7 +102,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
   {
     id: 'usr_student_02',
     name: 'David Okafor',
-    email: 'd.okafor@lasu.edu.ng',
     password: 'password123',
     role: 'student',
     department: 'Computer Science',
@@ -121,7 +112,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
     entryMode: 'utme',
     assignedAdviserId: 'adv_sarah',
     assignedAdviserName: 'Dr. Sarah Jenkins',
-    assignedAdviserEmail: 's.jenkins@lasu.edu.ng',
     assignedAdviserAvatar: ADVISER_AVATAR,
     avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80',
     hasUploadedTranscript: true,
@@ -129,7 +119,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
   {
     id: 'usr_student_03',
     name: 'Amina Bello',
-    email: 'a.bello@lasu.edu.ng',
     password: 'password123',
     role: 'student',
     department: 'Computer Science',
@@ -140,7 +129,6 @@ const DEFAULT_REGISTERED_ACCOUNTS: RegisteredAccount[] = [
     entryMode: 'direct_entry', // DE admitted in 2022/2023 starts at 200L, reaches 300L in 2023/24
     assignedAdviserId: 'adv_sarah',
     assignedAdviserName: 'Dr. Sarah Jenkins',
-    assignedAdviserEmail: 's.jenkins@lasu.edu.ng',
     assignedAdviserAvatar: ADVISER_AVATAR,
     avatarUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
     hasUploadedTranscript: true,
@@ -214,7 +202,7 @@ export function saveRegisteredAccounts(accounts: RegisteredAccount[]): void {
  */
 export function propagateAdviserAssignmentToStoredAccounts(
   cohort: { session: string; level: string; department: string },
-  newAdviser: { id: string; name: string; email: string; avatarUrl: string; title?: string }
+  newAdviser: { id: string; name: string; avatarUrl: string; title?: string }
 ): number {
   const accounts = getRegisteredAccounts();
   let updatedCount = 0;
@@ -232,7 +220,6 @@ export function propagateAdviserAssignmentToStoredAccounts(
         ...acc,
         assignedAdviserId: newAdviser.id,
         assignedAdviserName: newAdviser.name,
-        assignedAdviserEmail: newAdviser.email,
         assignedAdviserAvatar: newAdviser.avatarUrl,
         assignedAdviserTitle: newAdviser.title || 'Academic Level Adviser',
       };
@@ -262,10 +249,27 @@ export function propagateAdviserAssignmentToStoredAccounts(
   return updatedCount;
 }
 
+export interface AuthErrorDetail {
+  stage:
+    | 'credential_validation'
+    | 'supabase_config'
+    | 'supabase_sign_in'
+    | 'legacy_fallback_sign_in'
+    | 'profile_fetch'
+    | 'role_verification'
+    | 'session_finalization';
+  code?: string;
+  status?: number;
+  message: string;
+  identifier?: string;
+  timestamp: string;
+}
+
 export interface AuthResult {
   success: boolean;
   profile?: UserProfile;
   error?: string;
+  errorDetails?: AuthErrorDetail;
   isFirstLogin?: boolean;
 }
 
@@ -339,7 +343,6 @@ export function authenticateUser(
   const profile: UserProfile = {
     id: matched.id,
     name: matched.name,
-    email: matched.email,
     role: finalRole,
     department: matched.department,
     faculty: matched.faculty,
@@ -350,7 +353,6 @@ export function authenticateUser(
     entryMode: matched.entryMode,
     assignedAdviserId: matched.assignedAdviserId,
     assignedAdviserName: matched.assignedAdviserName,
-    assignedAdviserEmail: matched.assignedAdviserEmail,
     assignedAdviserAvatar: matched.assignedAdviserAvatar,
     assignedAdviserTitle: matched.assignedAdviserTitle,
     avatarUrl: matched.avatarUrl,
@@ -369,7 +371,6 @@ export function authenticateUser(
 
 export function registerNewUser(data: {
   name: string;
-  email?: string;
   password: string;
   role: UserRole;
   department: string;
@@ -381,7 +382,6 @@ export function registerNewUser(data: {
   entryMode?: EntryMode;
   assignedAdviserId?: string;
   assignedAdviserName?: string;
-  assignedAdviserEmail?: string;
   assignedAdviserAvatar?: string;
   hasUploadedTranscript?: boolean;
   transcriptFileName?: string;
@@ -441,7 +441,6 @@ export function registerNewUser(data: {
   const newAccount: RegisteredAccount = {
     id: `usr_${Date.now()}`,
     name: cleanName,
-    email: internalAuthEmail(cleanId),
     password: cleanPass,
     role: data.role,
     department: data.department,
@@ -454,7 +453,6 @@ export function registerNewUser(data: {
     entryMode: data.entryMode || 'utme',
     assignedAdviserId: data.assignedAdviserId || undefined,
     assignedAdviserName: data.assignedAdviserName || undefined,
-    assignedAdviserEmail: data.assignedAdviserEmail || undefined,
     assignedAdviserAvatar: data.assignedAdviserAvatar || undefined,
     assignedAdviserTitle: data.assignedAdviserId ? 'Assoc. Prof, Level Adviser' : undefined,
     avatarUrl:
@@ -479,7 +477,6 @@ export function registerNewUser(data: {
       body: JSON.stringify({
         role: newAccount.role,
         name: newAccount.name,
-        email: newAccount.email,
         matricNo: newAccount.matricNo,
         staffId: newAccount.staffId,
         department: newAccount.department,
@@ -496,7 +493,6 @@ export function registerNewUser(data: {
   const profile: UserProfile = {
     id: newAccount.id,
     name: newAccount.name,
-    email: newAccount.email,
     role: newAccount.role,
     department: newAccount.department,
     faculty: newAccount.faculty,
@@ -508,7 +504,6 @@ export function registerNewUser(data: {
     entryMode: newAccount.entryMode,
     assignedAdviserId: newAccount.assignedAdviserId,
     assignedAdviserName: newAccount.assignedAdviserName,
-    assignedAdviserEmail: newAccount.assignedAdviserEmail,
     assignedAdviserAvatar: newAccount.assignedAdviserAvatar,
     assignedAdviserTitle: newAccount.assignedAdviserTitle,
     avatarUrl: newAccount.avatarUrl,
@@ -530,7 +525,6 @@ export function registerNewUser(data: {
 export function registerStaffManually(data: ManualStaffRegistrationPayload): AuthResult & { generatedPassword?: string } {
   const cleanName = data.name.trim();
   const cleanStaffId = normalizeInstitutionalIdentifier(data.staffId || '');
-  const cleanEmail = data.email?.trim() ? data.email.trim().toLowerCase() : (cleanStaffId ? internalAuthEmail(cleanStaffId) : '');
   function generateStaffPassword(): string {
     const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
     const lower = 'abcdefghjkmnpqrstuvwxyz';
@@ -585,7 +579,6 @@ export function registerStaffManually(data: ManualStaffRegistrationPayload): Aut
   const newStaffAccount: RegisteredAccount = {
     id: `usr_staff_${Date.now()}`,
     name: cleanName,
-    email: cleanEmail,
     password: assignedPass,
     role: data.role,
     department: data.department || 'Computer Science',
@@ -613,7 +606,6 @@ export function registerStaffManually(data: ManualStaffRegistrationPayload): Aut
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: newStaffAccount.name,
-        email: newStaffAccount.email,
         staffId: newStaffAccount.staffId,
         role: newStaffAccount.role,
         department: newStaffAccount.department,
@@ -630,7 +622,6 @@ export function registerStaffManually(data: ManualStaffRegistrationPayload): Aut
   const profile: UserProfile = {
     id: newStaffAccount.id,
     name: newStaffAccount.name,
-    email: newStaffAccount.email,
     role: newStaffAccount.role,
     department: newStaffAccount.department,
     faculty: newStaffAccount.faculty,
@@ -666,7 +657,6 @@ export function getStaffDirectory(): StaffMember[] {
     return {
       id: acc.id,
       name: acc.name,
-      email: acc.email,
       staffId: acc.staffId || `STAFF/CSC/${String(100 + index).padStart(3, '0')}`,
       role: acc.role as 'lecturer' | 'hod' | 'dean',
       department: acc.department,

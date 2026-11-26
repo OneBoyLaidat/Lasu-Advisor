@@ -196,7 +196,7 @@ async function startServer() {
   });
   // 7. Node.js Admin Portal Staff Registration Endpoint
   app.post('/api/admin/staff', (req: Request, res: Response) => {
-    const { name, email, staffId, role, department, faculty, level, password } = req.body;
+    const { name, staffId, role, department, faculty, level, password } = req.body;
 
     if (!name || !staffId || !role) {
       return res.status(400).json({
@@ -212,7 +212,6 @@ async function startServer() {
       message: `Staff member ${name} (${staffId}) successfully registered with role ${role}`,
       staff: {
         name,
-        email,
         staffId,
         role,
         department: department || 'Computer Science',
@@ -247,9 +246,9 @@ async function startServer() {
 
   // 9. Node.js Admin Staff Password Reset Endpoint
   app.post('/api/admin/staff/reset-password', (req: Request, res: Response) => {
-    const { staffId, email, newPassword } = req.body;
+    const { staffId, newPassword } = req.body;
 
-    if ((!staffId && !email) || !newPassword) {
+    if (!staffId || !newPassword) {
       return res.status(400).json({
         success: false,
         error: 'Staff identifier and new password are required',
@@ -258,7 +257,7 @@ async function startServer() {
 
     res.json({
       success: true,
-      message: `Password updated successfully for staff member ${staffId || email}`,
+      message: `Password updated successfully for staff member ${staffId}`,
       updatedAt: new Date().toISOString(),
     });
   });

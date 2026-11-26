@@ -10,7 +10,6 @@ export const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   student: {
     id: 'usr_student_01',
     name: 'Michael Adebayo',
-    email: 'm.adebayo@lasu.edu.ng',
     role: 'student',
     department: 'Computer Science',
     faculty: 'Faculty of Computing & Information Technology',
@@ -25,7 +24,6 @@ export const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   lecturer: {
     id: 'usr_lecturer_01',
     name: 'Dr. Sarah Jenkins',
-    email: 's.jenkins@lasu.edu.ng',
     role: 'lecturer',
     department: 'Computer Science',
     faculty: 'Faculty of Computing & Information Technology',
@@ -37,7 +35,6 @@ export const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   hod: {
     id: 'usr_hod_01',
     name: 'Dr. James Miller',
-    email: 'j.miller@lasu.edu.ng',
     role: 'hod',
     department: 'Computer Science',
     faculty: 'Faculty of Computing & Information Technology',
@@ -47,7 +44,6 @@ export const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   dean: {
     id: 'usr_dean_01',
     name: 'Prof. A. Chen',
-    email: 'a.chen@lasu.edu.ng',
     role: 'dean',
     department: 'Computer Science',
     faculty: 'Faculty of Computing & Information Technology',
@@ -57,7 +53,6 @@ export const DEFAULT_PROFILES: Record<UserRole, UserProfile> = {
   admin: {
     id: 'usr_admin_01',
     name: 'LASU System Admin',
-    email: 'admin@lasu.edu.ng',
     role: 'admin',
     department: 'Computer Science',
     faculty: 'Faculty of Computing & Information Technology',

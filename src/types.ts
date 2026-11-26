@@ -15,7 +15,6 @@ export type LasuDepartment = (typeof LASU_DEPARTMENTS)[number];
 export interface UserProfile {
   id: string;
   name: string;
-  email: string;
   role: UserRole;
   department: string;
   faculty: string;
@@ -33,7 +32,6 @@ export interface UserProfile {
   transcriptFileName?: string;
   assignedAdviserId?: string;
   assignedAdviserName?: string;
-  assignedAdviserEmail?: string;
   assignedAdviserAvatar?: string;
   assignedAdviserTitle?: string;
   archivedChats?: ArchivedChatThread[];
@@ -81,7 +79,6 @@ export interface Adviser {
   name: string;
   title: string;
   department: string;
-  email: string;
   avatarUrl: string;
   assignedLevel: string;
   assignedSession?: string;
@@ -206,7 +203,6 @@ export interface ArchivedChatThread {
 export interface StudentConversation {
   id: string;
   studentId: string;
-  studentEmail?: string;
   studentName: string;
   matricNo: string;
   level: string;
@@ -230,7 +226,6 @@ export interface StudentConversation {
 export interface MessageContact {
   id: string;
   name: string;
-  email: string;
   role: UserRole;
   department: string;
   avatarUrl?: string;
@@ -249,7 +244,6 @@ export interface NotificationItem {
 export interface StaffMember {
   id: string;
   name: string;
-  email: string;
   staffId: string;
   role: 'lecturer' | 'hod' | 'dean';
   department: string;
@@ -266,7 +260,6 @@ export interface StaffMember {
 export interface AdministratorProfile {
   id: string;
   name: string;
-  email: string;
   staffId: string;
   department: string;
   faculty: string;
@@ -279,7 +272,6 @@ export interface AdministratorRegistrationPayload extends Omit<AdministratorProf
 
 export interface ManualStaffRegistrationPayload {
   name: string;
-  email: string;
   staffId: string;
   role: 'lecturer' | 'hod' | 'dean';
   department: string;

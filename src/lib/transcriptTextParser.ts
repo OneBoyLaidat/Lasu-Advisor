@@ -14,7 +14,6 @@ export interface ParsedTranscriptCourse extends CourseResult {
 }
 
 export interface ParsedTranscriptData {
-  studentName?: string;
   matricNo?: string;
   registrationNo?: string;
   refNo?: string;
@@ -122,26 +121,6 @@ export function parseTranscriptText(rawText: string, fileName: string): ParsedTr
   let refNo: string | undefined;
   const refMatch = rawText.match(/\b(?:Doc\s*Reference|Reference|Ref)\s*[:\-]\s*([A-Za-z0-9/_-]+)\b/i);
   if (refMatch && !isPlaceholderId(refMatch[1])) refNo = refMatch[1].trim();
-
-  let studentName: string | undefined;
-  const nameLine = lines.find((line) => /^(?:student\s*name|name\s*of\s*student|full\s*name)\s*[:\-]/i.test(line));
-  if (nameLine) {
-    studentName = nameLine.replace(/^(?:student\s*name|name\s*of\s*student|full\s*name)\s*[:\-]\s*/i, '').trim();
-  } else {
-    const fullNameIdx = lines.findIndex((line) => /\bFULL\s*NAME\b/i.test(line));
-    if (fullNameIdx !== -1 && fullNameIdx + 1 < lines.length) {
-      const candidate = lines[fullNameIdx + 1]
-        .replace(/\b(?:N\/A|NA|NONE|NIL)\b\s*$/i, '')
-        .replace(/\b(?:[A-Z]{2,5}\/\d{2,4}\/\d{3,6}|DN\d{8,14}|\d{9,12})\b\s*$/i, '')
-        .trim();
-      if (candidate && !/^(?:MATRIC|APPLICATION|PROGRAMME|SESSION)/i.test(candidate)) {
-        studentName = candidate;
-      }
-    } else {
-      const inlineNameMatch = rawText.match(/\bFULL\s*NAME\b(?:\s+MATRICULATION\s*NUMBER)?\s+([A-Z][A-Z\s'-]{3,60}?)(?=\s+(?:N\/A|MATRIC|APPLICATION|PROGRAMME|SESSION|\d|[A-Z]{2,4}\/\d))/i);
-      if (inlineNameMatch?.[1]) studentName = inlineNameMatch[1].trim();
-    }
-  }
 
   const idTokenPattern = /\b(?:[A-Z]{2,5}\/\d{2,4}\/\d{3,6}|[A-Z]{1,4}\d{8,14}|\d{9,12})\b/;
   const explicitMatric = extractLabeledValue(
@@ -320,12 +299,11 @@ export function parseTranscriptText(rawText: string, fileName: string): ParsedTr
   const gpa = totalUnits > 0 ? parseFloat((totalGradePoints / totalUnits).toFixed(2)) : 0;
   const cgpa = gpa;
 
-  const isProvisionalOrBroadsheet = !studentName || Boolean(refNo);
+  const isProvisionalOrBroadsheet = Boolean(refNo);
   const hasMissingFields = courses.length === 0 || missingFieldCount > 0;
   const ocrConfidence: 'high' | 'partial' | 'low' = courses.length === 0 ? 'low' : hasMissingFields ? 'partial' : 'high';
 
   return {
-    studentName,
     matricNo,
     registrationNo,
     refNo,

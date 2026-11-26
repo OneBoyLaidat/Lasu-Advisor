@@ -33,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const name = String(input.name || '').trim();
   const staffId = normalizeIdentifier(input.staffId);
-  const email = String(input.email || '').trim().toLowerCase() || internalEmail(staffId);
+  const email = internalEmail(staffId);
   const role = String(input.role || '');
   const department = String(input.department || '').trim();
   const faculty = String(input.faculty || '').trim();

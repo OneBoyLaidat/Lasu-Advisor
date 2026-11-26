@@ -175,9 +175,9 @@ export function App() {
   );
   const [staffThreads, setStaffThreads] = useState<Record<string, ChatMessage[]>>({});
   const [staffMessageContacts, setStaffMessageContacts] = useState<Awaited<ReturnType<typeof loadStaffMessageContacts>>>([]);
-  const [activeStudentAdviserEmail, setActiveStudentAdviserEmail] = useState('');
+  const [activeStudentAdviserId, setActiveStudentAdviserId] = useState('');
   const [studentAdvisers, setStudentAdvisers] = useState<Adviser[]>([]);
-  const [activeStaffContactEmail, setActiveStaffContactEmail] = useState('');
+  const [activeStaffContactId, setActiveStaffContactId] = useState('');
   const [conversations, setConversations] = useState<StudentConversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string>('conv_michael');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -226,7 +226,7 @@ export function App() {
     try {
       const result = isSupabaseConfigured
         ? await updateOwnPassword(forceNewPassword)
-        : await resetPasswordDirectly(userProfile.matricNo || userProfile.staffId || userProfile.email, forceNewPassword);
+        : await resetPasswordDirectly(userProfile.matricNo || userProfile.staffId || userProfile.id, forceNewPassword);
       if (!result.success) { setForcePasswordError(result.error || 'Could not update your password.'); return; }
       clearMustChangePassword(userProfile.id);
       setUserProfile((previous) => ({ ...previous, mustChangePassword: false }));
@@ -251,7 +251,7 @@ export function App() {
         setUserProfile(profile);
         setUserRole(profile.role);
         if (profile.mustChangePassword) setShowForcePasswordChange(true);
-        setActiveStudentAdviserEmail('');
+        setActiveStudentAdviserId('');
         const adminPath = isAdminPortalPath() && canOpenAdminPortal(profile.role);
         if (isAdminPortalPath() && !adminPath) window.history.replaceState({}, '', '/');
         setCurrentTab(adminPath ? 'admin' : profile.role === 'admin' ? 'admin' : profile.role === 'dean' ? 'executive' : profile.role === 'hod' ? 'departmental' : 'dashboard');
@@ -282,7 +282,7 @@ export function App() {
       loadStudentAdvisers(userProfile).then((adviserList) => {
         if (active) {
           setStudentAdvisers(adviserList);
-          setActiveStudentAdviserEmail(adviserList[0]?.email || '');
+          setActiveStudentAdviserId(adviserList[0]?.id || '');
         }
       });
       const prompt = !userProfile.hasUploadedTranscript;
@@ -298,7 +298,7 @@ export function App() {
         setCourseResults(transcript?.courses || []);
         setStudentStats(transcript ? statsFromTranscript(transcript) : EMPTY_STUDENT_STATS);
         setStudentAdvisers(adviserList);
-        setActiveStudentAdviserEmail(adviserList[0]?.email || '');
+        setActiveStudentAdviserId(adviserList[0]?.id || '');
         if (transcript) {
           setUserProfile((previous) => ({ ...previous, hasUploadedTranscript: true, transcriptFileName: transcript.fileName }));
         }
@@ -336,9 +336,9 @@ export function App() {
       if (!active || loaded.length === 0) return;
       setStudentThreads((previous) => {
         const next = { ...previous };
-        loaded.forEach(({ email, message }) => {
-          const existing = next[email] || [];
-          if (!existing.some((item) => item.id === message.id)) next[email] = [...existing, message];
+        loaded.forEach(({ contactId, message }) => {
+          const existing = next[contactId] || [];
+          if (!existing.some((item) => item.id === message.id)) next[contactId] = [...existing, message];
         });
         return next;
       });
@@ -364,7 +364,7 @@ export function App() {
       if (!active) return;
       setStaffMessageContacts(contacts);
       const grouped = loaded.reduce<Record<string, ChatMessage[]>>((threads, item) => {
-        (threads[item.email] ||= []).push(item.message);
+        (threads[item.contactId] ||= []).push(item.message);
         return threads;
       }, {});
       setStaffThreads(grouped);
@@ -376,10 +376,10 @@ export function App() {
     if (isSupabaseConfigured || !isAuthenticated || !['hod', 'dean'].includes(userRole)) return;
     const contacts = userRole === 'hod'
       ? [
-          ...advisers.filter((adviser) => adviser.department === userProfile.department).map((adviser) => ({ id: adviser.id, name: adviser.name, email: adviser.email, role: 'lecturer' as const, department: adviser.department, avatarUrl: adviser.avatarUrl })),
-          { id: DEFAULT_PROFILES.dean.id, name: DEFAULT_PROFILES.dean.name, email: DEFAULT_PROFILES.dean.email, role: 'dean' as const, department: DEFAULT_PROFILES.dean.department },
+          ...advisers.filter((adviser) => adviser.department === userProfile.department).map((adviser) => ({ id: adviser.id, name: adviser.name, role: 'lecturer' as const, department: adviser.department, avatarUrl: adviser.avatarUrl })),
+          { id: DEFAULT_PROFILES.dean.id, name: DEFAULT_PROFILES.dean.name, role: 'dean' as const, department: DEFAULT_PROFILES.dean.department },
         ]
-      : [{ id: DEFAULT_PROFILES.hod.id, name: DEFAULT_PROFILES.hod.name, email: DEFAULT_PROFILES.hod.email, role: 'hod' as const, department: DEFAULT_PROFILES.hod.department }];
+      : [{ id: DEFAULT_PROFILES.hod.id, name: DEFAULT_PROFILES.hod.name, role: 'hod' as const, department: DEFAULT_PROFILES.hod.department }];
     setStaffMessageContacts(contacts);
   }, [isAuthenticated, userRole, userProfile.department, advisers]);
 
@@ -392,14 +392,14 @@ export function App() {
           if (userRole === 'student') {
             const loaded = await loadDirectMessages(userProfile.id, 'student');
             const grouped = loaded.reduce<Record<string, ChatMessage[]>>((threads, item) => {
-              (threads[item.email] ||= []).push(item.message);
+              (threads[item.contactId] ||= []).push(item.message);
               return threads;
             }, {});
             setStudentThreads(grouped);
           } else if (userRole === 'hod' || userRole === 'dean') {
             const loaded = await loadDirectMessages(userProfile.id, userRole);
             setStaffThreads(loaded.reduce<Record<string, ChatMessage[]>>((threads, item) => {
-              (threads[item.email] ||= []).push(item.message);
+              (threads[item.contactId] ||= []).push(item.message);
               return threads;
             }, {}));
           } else {
@@ -417,7 +417,7 @@ export function App() {
   const [isBookAppointmentOpen, setIsBookAppointmentOpen] = useState(false);
   const [isInterventionOpen, setIsInterventionOpen] = useState(false);
   const [interventionTargetStudent, setInterventionTargetStudent] = useState<string>('');
-  const [interventionInitialMode, setInterventionInitialMode] = useState<'schedule' | 'email'>('schedule');
+  const [interventionInitialMode, setInterventionInitialMode] = useState<'schedule' | 'notice'>('schedule');
   const [isAssignAdvisorOpen, setIsAssignAdvisorOpen] = useState(false);
   const [selectedAdviserToEdit, setSelectedAdviserToEdit] = useState<Adviser | undefined>(undefined);
   const [isExportReportOpen, setIsExportReportOpen] = useState(false);
@@ -579,7 +579,7 @@ export function App() {
   };
 
   // Send chat message (Strict Peer-to-Peer without automated AI bot intervention)
-  const handleSendMessage = (text: string, recipientEmail?: string) => {
+  const handleSendMessage = (text: string, recipientId?: string) => {
     if (!userProfile) {
       showToast('Authentication Required', 'You must be logged in to send advising messages.', 'warning');
       return;
@@ -593,34 +593,33 @@ export function App() {
       senderRole: isStudent ? 'Student' : userProfile.role.toUpperCase(),
       studentName: isStudent ? userProfile.name : undefined,
       studentMatric: isStudent ? userProfile.matricNo : undefined,
-      recipientName: isStudent ? recipientEmail : undefined,
+      recipientName: isStudent ? recipientId : undefined,
       text,
       timestamp: 'Just now',
     };
 
-    if (isStudent && recipientEmail) {
-      setStudentThreads((prev) => ({ ...prev, [recipientEmail]: [...(prev[recipientEmail] || []), newMsg] }));
-      if (recipientEmail === userProfile.assignedAdviserEmail) setChatMessages((prev) => [...prev, newMsg]);
-      persistDirectMessage({ senderId: userProfile.id, recipientEmail, body: text })
+    if (isStudent && recipientId) {
+      setStudentThreads((prev) => ({ ...prev, [recipientId]: [...(prev[recipientId] || []), newMsg] }));
+      if (recipientId === userProfile.assignedAdviserId) setChatMessages((prev) => [...prev, newMsg]);
+      persistDirectMessage({ senderId: userProfile.id, recipientId, body: text })
         .catch((error) => {
-          setStudentThreads((previous) => ({ ...previous, [recipientEmail]: (previous[recipientEmail] || []).filter((message) => message.id !== newMsg.id) }));
+          setStudentThreads((previous) => ({ ...previous, [recipientId]: (previous[recipientId] || []).filter((message) => message.id !== newMsg.id) }));
           showToast('Message not saved', error instanceof Error ? error.message : 'Try sending again.', 'warning');
         });
-    } else if (recipientEmail && (userProfile.role === 'hod' || userProfile.role === 'dean')) {
-      setStaffThreads((previous) => ({ ...previous, [recipientEmail]: [...(previous[recipientEmail] || []), newMsg] }));
-      persistDirectMessage({ senderId: userProfile.id, recipientEmail, body: text })
+    } else if (recipientId && (userProfile.role === 'hod' || userProfile.role === 'dean')) {
+      setStaffThreads((previous) => ({ ...previous, [recipientId]: [...(previous[recipientId] || []), newMsg] }));
+      persistDirectMessage({ senderId: userProfile.id, recipientId, body: text })
         .catch((error) => {
-          setStaffThreads((previous) => ({ ...previous, [recipientEmail]: (previous[recipientEmail] || []).filter((message) => message.id !== newMsg.id) }));
+          setStaffThreads((previous) => ({ ...previous, [recipientId]: (previous[recipientId] || []).filter((message) => message.id !== newMsg.id) }));
           showToast('Message not saved', error instanceof Error ? error.message : 'Try sending again.', 'warning');
         });
     } else {
       setChatMessages((prev) => [...prev, newMsg]);
     }
 
-    // Also synchronize with the adviser's conversation inbox for Michael Adebayo or matching student
     setConversations((prev) =>
       prev.map((c) => {
-        if (c.studentId === userProfile.id && (!recipientEmail || recipientEmail === userProfile.assignedAdviserEmail)) {
+        if (c.studentId === userProfile.id && (!recipientId || recipientId === userProfile.assignedAdviserId)) {
           return {
             ...c,
             lastMessage: text,
@@ -639,8 +638,9 @@ export function App() {
         "Your message is held securely for your Level Adviser's manual review and reply.",
         'success'
       );
-    } else if (recipientEmail && (userProfile.role === 'hod' || userProfile.role === 'dean')) {
-      showToast('Message sent', `Your message was sent to ${recipientEmail}.`, 'success');
+    } else if (recipientId && (userProfile.role === 'hod' || userProfile.role === 'dean')) {
+      const targetContact = staffMessageContacts.find((c) => c.id === recipientId);
+      showToast('Message sent', `Your message was sent to ${targetContact?.name || 'recipient'}.`, 'success');
     } else {
       showToast('Reply Sent', 'Your direct message has been delivered to the student.', 'success');
     }
@@ -654,11 +654,11 @@ export function App() {
     }
 
     const targetConversation = conversations.find((conversation) => conversation.id === conversationId);
-    if (isSupabaseConfigured && targetConversation?.studentEmail) {
+    if (isSupabaseConfigured && targetConversation?.studentId) {
       try {
         await persistDirectMessage({
           senderId: userProfile.id,
-          recipientEmail: targetConversation.studentEmail,
+          recipientId: targetConversation.studentId,
           body: replyText,
         });
       } catch (error) {
@@ -705,8 +705,8 @@ export function App() {
   const handleSelectConversation = (id: string) => {
     setActiveConversationId(id);
     const selectedConversation = conversations.find((conversation) => conversation.id === id);
-    if (isSupabaseConfigured && userRole === 'lecturer' && selectedConversation?.studentEmail) {
-      markDirectMessagesRead(userProfile.id, selectedConversation.studentEmail).catch((error) => console.error('Could not mark student messages read', error));
+    if (isSupabaseConfigured && userRole === 'lecturer' && selectedConversation?.studentId) {
+      markDirectMessagesRead(userProfile.id, selectedConversation.studentId).catch((error) => console.error('Could not mark student messages read', error));
     }
     setConversations((prev) =>
       prev.map((c) => (c.id === id ? { ...c, unreadCount: 0, messages: c.messages.map((message) => message.sender === 'student' ? { ...message, isRead: true } : message) } : c))
@@ -729,23 +729,23 @@ export function App() {
     showToast('Appointment Booked', `Session confirmed with ${appointment.adviserName} on ${appointment.date}.`, 'success');
   };
 
-  const handleSelectStudentAdviser = (email: string) => {
-    setActiveStudentAdviserEmail(email);
-    if (!email) return;
-    markDirectMessagesRead(userProfile.id, email).catch((error) => console.error('Could not mark messages read', error));
+  const handleSelectStudentAdviser = (adviserId: string) => {
+    setActiveStudentAdviserId(adviserId);
+    if (!adviserId) return;
+    markDirectMessagesRead(userProfile.id, adviserId).catch((error) => console.error('Could not mark messages read', error));
     setStudentThreads((previous) => ({
       ...previous,
-      [email]: (previous[email] || []).map((message) => message.sender === 'adviser' ? { ...message, isRead: true } : message),
+      [adviserId]: (previous[adviserId] || []).map((message) => message.sender === 'adviser' ? { ...message, isRead: true } : message),
     }));
   };
 
-  const handleSelectStaffContact = (email: string) => {
-    setActiveStaffContactEmail(email);
-    if (!email) return;
-    markDirectMessagesRead(userProfile.id, email).catch((error) => console.error('Could not mark faculty messages read', error));
+  const handleSelectStaffContact = (contactId: string) => {
+    setActiveStaffContactId(contactId);
+    if (!contactId) return;
+    markDirectMessagesRead(userProfile.id, contactId).catch((error) => console.error('Could not mark faculty messages read', error));
     setStaffThreads((previous) => ({
       ...previous,
-      [email]: (previous[email] || []).map((message) => message.sender !== 'adviser' ? { ...message, isRead: true } : message),
+      [contactId]: (previous[contactId] || []).map((message) => message.sender !== 'adviser' ? { ...message, isRead: true } : message),
     }));
   };
 
@@ -761,7 +761,7 @@ export function App() {
 
     if (isSupabaseConfigured && userProfile.role === 'hod') {
       try {
-        await persistAdviserAssignment(targetAdv.email, targetAdv.department, session, level);
+        await persistAdviserAssignment(targetAdv.id, targetAdv.department, session, level);
       } catch (error) {
         showToast('Assignment not saved', error instanceof Error ? error.message : 'Try again.', 'warning');
         throw error;
@@ -786,7 +786,6 @@ export function App() {
     const propagatedCount = propagateAdviserAssignmentToStoredAccounts({ session, level, department: targetAdv.department }, {
       id: targetAdv.id,
       name: targetAdv.name,
-      email: targetAdv.email,
       avatarUrl: targetAdv.avatarUrl,
       title: targetAdv.title,
     });
@@ -834,7 +833,6 @@ export function App() {
           ...prev,
           assignedAdviserId: targetAdv.id,
           assignedAdviserName: targetAdv.name,
-          assignedAdviserEmail: targetAdv.email,
           assignedAdviserAvatar: targetAdv.avatarUrl,
           assignedAdviserTitle: targetAdv.title,
           archivedChats: [...(prev.archivedChats || []), newArchive],
@@ -854,7 +852,6 @@ export function App() {
           ...prev,
           assignedAdviserId: targetAdv.id,
           assignedAdviserName: targetAdv.name,
-          assignedAdviserEmail: targetAdv.email,
           assignedAdviserAvatar: targetAdv.avatarUrl,
           assignedAdviserTitle: targetAdv.title,
         }));
@@ -1017,8 +1014,8 @@ export function App() {
           setNotifications([]);
           setStudentThreads({});
           setStaffThreads({});
-          setActiveStaffContactEmail('');
-          setActiveStudentAdviserEmail('');
+          setActiveStaffContactId('');
+          setActiveStudentAdviserId('');
           setHasNudgeNotice(false);
           if (isAdminPortalPath() && canOpenAdminPortal(profile.role)) {
             setCurrentTab('admin');
@@ -1044,7 +1041,7 @@ export function App() {
   const canAccessCurrentTab = isTabAllowedForRole(currentTab, userRole);
   const departmentAdvisees = advisees.filter((a) => a.department === userProfile.department);
   const departmentConversations = conversations.filter((c) => c.department === userProfile.department);
-  const assignedAdviser = advisers.find((a) => a.email.toLowerCase() === userProfile.email.toLowerCase());
+  const assignedAdviser = advisers.find((a) => a.id === userProfile.id || a.name.toLowerCase() === userProfile.name.toLowerCase());
   const advisorCohortAdvisees = userRole === 'lecturer'
     ? (assignedAdviser?.assignedSession ? departmentAdvisees.filter((a) => a.admissionSession === assignedAdviser.assignedSession && a.level === assignedAdviser.assignedLevel) : [])
     : departmentAdvisees;
@@ -1115,7 +1112,7 @@ export function App() {
         searchQuery={globalSearchQuery}
         setSearchQuery={setGlobalSearchQuery}
         onOpenSettings={() => setCurrentTab('settings')}
-        onSignOut={() => { signOutAccount().catch((error) => console.error('Sign out failed', error)).finally(() => { setStudentThreads({}); setStaffThreads({}); setStaffMessageContacts([]); setActiveStudentAdviserEmail(''); setActiveStaffContactEmail(''); setIsAuthenticated(false); }); }}
+        onSignOut={() => { signOutAccount().catch((error) => console.error('Sign out failed', error)).finally(() => { setStudentThreads({}); setStaffThreads({}); setStaffMessageContacts([]); setActiveStudentAdviserId(''); setActiveStaffContactId(''); setIsAuthenticated(false); }); }}
         notifications={notifications}
         onClearNotifications={() => setNotifications([])}
         onOpenTranscriptModal={() => setIsTranscriptModalOpen(true)}
@@ -1158,7 +1155,7 @@ export function App() {
                     courseResults={courseResults}
                     assignedAdviser={currentStudentAdviser}
                     onOpenAdvisorChat={() => {
-                      if (currentStudentAdviser) setActiveStudentAdviserEmail(currentStudentAdviser.email);
+                      if (currentStudentAdviser) setActiveStudentAdviserId(currentStudentAdviser.id);
                       setCurrentTab('messages');
                     }}
                     onOpenBookAppointment={() => setIsBookAppointmentOpen(true)}
@@ -1183,9 +1180,9 @@ export function App() {
                       setInterventionInitialMode('schedule');
                       setIsInterventionOpen(true);
                     }}
-                    onOpenEmailModal={(targetStudents) => {
+                    onOpenNoticeModal={(targetStudents) => {
                       setInterventionTargetStudent(targetStudents?.[0] || 'At-Risk Students');
-                      setInterventionInitialMode('email');
+                      setInterventionInitialMode('notice');
                       setIsInterventionOpen(true);
                     }}
                     onViewStudentDetails={(advisee) => {
@@ -1233,21 +1230,21 @@ export function App() {
                   <StudentMessagingView
                     studentProfile={userProfile}
                     advisers={studentAdvisers}
-                    messages={studentThreads[activeStudentAdviserEmail] || []}
+                    messages={studentThreads[activeStudentAdviserId] || []}
                     threads={studentThreads}
-                    selectedAdviserEmail={activeStudentAdviserEmail}
+                    selectedAdviserId={activeStudentAdviserId}
                     archivedThreads={userProfile.archivedChats || []}
                     onSelectAdviser={handleSelectStudentAdviser}
-                    onSendMessage={(email, text) => handleSendMessage(text, email)}
+                    onSendMessage={(adviserId, text) => handleSendMessage(text, adviserId)}
                   />
                 ) : userRole === 'hod' || userRole === 'dean' ? (
                     <DirectMessagingView
                       profile={userProfile}
                       contacts={staffMessageContacts}
                       threads={staffThreads}
-                      selectedEmail={activeStaffContactEmail}
+                      selectedContactId={activeStaffContactId}
                       onSelectContact={handleSelectStaffContact}
-                      onSendMessage={(email, text) => handleSendMessage(text, email)}
+                      onSendMessage={(contactId, text) => handleSendMessage(text, contactId)}
                     />
                   ) : <AdviserMessagingView
                     conversations={advisorCohortConversations}
@@ -1284,9 +1281,9 @@ export function App() {
                   setInterventionInitialMode('schedule');
                   setIsInterventionOpen(true);
                 }}
-                onOpenEmailModal={(targetStudents) => {
+                onOpenNoticeModal={(targetStudents) => {
                   setInterventionTargetStudent(targetStudents?.[0] || 'At-Risk Students');
-                  setInterventionInitialMode('email');
+                  setInterventionInitialMode('notice');
                   setIsInterventionOpen(true);
                 }}
                 onViewStudentDetails={(advisee) => {
@@ -1589,7 +1586,7 @@ export function App() {
                     const student = selectedAdviseeDetail.name;
                     setSelectedAdviseeDetail(null);
                     setInterventionTargetStudent(student);
-                    setInterventionInitialMode('email');
+                    setInterventionInitialMode('notice');
                     setIsInterventionOpen(true);
                   }}
                   className="flex-1 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-semibold py-2.5 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-all"

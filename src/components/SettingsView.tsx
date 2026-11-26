@@ -26,9 +26,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // Profile fields
   const [name, setName] = useState(userProfile.name);
-  const email = userProfile.email;
   const [phone, setPhone] = useState(userProfile.phone || '');
-  const [emailAlerts, setEmailAlerts] = useState(true);
+  const [portalAlerts, setPortalAlerts] = useState(true);
   const [isSaved, setIsSaved] = useState(false);
 
   // Password / Security fields (Independent password management for student & staff)
@@ -43,7 +42,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     onUpdateProfile({
       ...userProfile,
       name,
-      email,
       phone,
     });
     setIsSaved(true);
@@ -83,7 +81,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
     setIsUpdatingPassword(true);
     try {
-      const res = await resetPasswordDirectly(userProfile.matricNo || userProfile.staffId || userProfile.email, newPassword);
+      const res = await resetPasswordDirectly(userProfile.matricNo || userProfile.staffId || userProfile.id, newPassword);
       if (res.success) {
         setPasswordStatus({
           type: 'success',
@@ -307,8 +305,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     </div>
                     <input
                       type="checkbox"
-                      checked={emailAlerts}
-                      onChange={(e) => setEmailAlerts(e.target.checked)}
+                      checked={portalAlerts}
+                      onChange={(e) => setPortalAlerts(e.target.checked)}
                       className="rounded text-emerald-600 focus:ring-emerald-500 h-4 w-4"
                     />
                   </label>
@@ -507,8 +505,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       <p className="text-xs font-bold text-slate-900 dark:text-slate-100">
                         {userProfile.assignedAdviserName}
                       </p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                        {userProfile.assignedAdviserEmail}
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                        {userProfile.assignedAdviserTitle || `Level Adviser · ${userProfile.department}`}
                       </p>
                     </div>
                   </div>

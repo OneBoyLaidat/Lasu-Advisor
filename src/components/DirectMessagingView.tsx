@@ -5,27 +5,27 @@ interface DirectMessagingViewProps {
   profile: UserProfile;
   contacts: MessageContact[];
   threads: Record<string, ChatMessage[]>;
-  selectedEmail: string;
-  onSelectContact: (email: string) => void;
-  onSendMessage: (email: string, text: string) => void;
+  selectedContactId: string;
+  onSelectContact: (contactId: string) => void;
+  onSendMessage: (contactId: string, text: string) => void;
 }
 
 export const DirectMessagingView: React.FC<DirectMessagingViewProps> = ({
   profile,
   contacts,
   threads,
-  selectedEmail,
+  selectedContactId,
   onSelectContact,
   onSendMessage,
 }) => {
   const [draft, setDraft] = useState('');
-  const contact = contacts.find((item) => item.email === selectedEmail) || null;
-  const messages = threads[selectedEmail] || [];
+  const contact = contacts.find((item) => item.id === selectedContactId) || null;
+  const messages = threads[selectedContactId] || [];
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!contact || !draft.trim()) return;
-    onSendMessage(contact.email, draft.trim());
+    onSendMessage(contact.id, draft.trim());
     setDraft('');
   };
 
@@ -39,10 +39,10 @@ export const DirectMessagingView: React.FC<DirectMessagingViewProps> = ({
         </header>
         <div className="flex-1 overflow-y-auto">
           {contacts.length ? contacts.map((person) => {
-            const thread = threads[person.email] || [];
+            const thread = threads[person.id] || [];
             const unreadCount = thread.filter((message) => message.sender !== 'adviser' && !message.isRead).length;
             return (
-              <button key={person.email} type="button" onClick={() => onSelectContact(person.email)} className={`w-full px-5 py-4 flex items-center gap-3 text-left border-b border-slate-100 dark:border-slate-800 transition-colors ${selectedEmail === person.email ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
+              <button key={person.id} type="button" onClick={() => onSelectContact(person.id)} className={`w-full px-5 py-4 flex items-center gap-3 text-left border-b border-slate-100 dark:border-slate-800 transition-colors ${selectedContactId === person.id ? 'bg-emerald-50 dark:bg-emerald-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'}`}>
                 <div className="w-11 h-11 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 grid place-items-center font-bold shrink-0">{person.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</div>
                 <span className="flex-1 min-w-0">
                   <span className="block text-sm font-semibold truncate text-slate-900 dark:text-slate-100">{person.name}</span>

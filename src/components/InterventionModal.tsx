@@ -5,7 +5,7 @@ interface InterventionModalProps {
   isOpen: boolean;
   onClose: () => void;
   targetStudentName?: string;
-  initialMode?: 'schedule' | 'email';
+  initialMode?: 'schedule' | 'notice';
 }
 
 export const InterventionModal: React.FC<InterventionModalProps> = ({
@@ -14,7 +14,7 @@ export const InterventionModal: React.FC<InterventionModalProps> = ({
   targetStudentName,
   initialMode = 'schedule',
 }) => {
-  const [mode, setMode] = useState<'schedule' | 'email'>(initialMode);
+  const [mode, setMode] = useState<'schedule' | 'notice'>(initialMode);
   const [selectedStudent, setSelectedStudent] = useState<string>(
     targetStudentName || 'Sarah Connor (CSC/21/0102)'
   );
@@ -22,10 +22,10 @@ export const InterventionModal: React.FC<InterventionModalProps> = ({
   const [interventionPlan, setInterventionPlan] = useState<string>(
     'Provide structured weekly tutoring in MAT301 and CSC201 with mandatory office-hour attendance check.'
   );
-  const [emailSubject, setEmailSubject] = useState<string>(
+  const [noticeSubject, setNoticeSubject] = useState<string>(
     'Urgent Academic Advising Consultation - LASU Computer Science'
   );
-  const [emailBody, setEmailBody] = useState<string>(
+  const [noticeBody, setNoticeBody] = useState<string>(
     `Dear Student,\n\nOur continuous assessment monitoring has flagged concerns regarding your academic trajectory for the current semester. Please meet with your level adviser immediately to formulate a remediation plan.\n\nBest regards,\nDr. Sarah Jenkins\nLevel 300 Adviser`
   );
   const [isSuccess, setIsSuccess] = useState(false);
@@ -90,9 +90,9 @@ export const InterventionModal: React.FC<InterventionModalProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => setMode('email')}
+            onClick={() => setMode('notice')}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-              mode === 'email'
+              mode === 'notice'
                 ? 'bg-white text-slate-900 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
@@ -166,8 +166,8 @@ export const InterventionModal: React.FC<InterventionModalProps> = ({
                   <label className="block font-semibold text-slate-700 mb-1">Subject</label>
                   <input
                     type="text"
-                    value={emailSubject}
-                    onChange={(e) => setEmailSubject(e.target.value)}
+                    value={noticeSubject}
+                    onChange={(e) => setNoticeSubject(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-lg p-2 text-slate-900 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                   />
                 </div>
@@ -176,8 +176,8 @@ export const InterventionModal: React.FC<InterventionModalProps> = ({
                   <label className="block font-semibold text-slate-700 mb-1">Message Body</label>
                   <textarea
                     rows={5}
-                    value={emailBody}
-                    onChange={(e) => setEmailBody(e.target.value)}
+                    value={noticeBody}
+                    onChange={(e) => setNoticeBody(e.target.value)}
                     className="w-full bg-white border border-slate-300 rounded-lg p-2.5 text-slate-900 resize-none font-sans focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                   />
                 </div>

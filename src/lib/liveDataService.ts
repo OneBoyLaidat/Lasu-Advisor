@@ -1,6 +1,6 @@
 import { User } from '@supabase/supabase-js';
 import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConversation, UserProfile, UserRole, StaffMember, ManualStaffRegistrationPayload, AdministratorProfile, AdministratorRegistrationPayload } from '../types';
-import { AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember, clearMustChangePassword, hasUserLoggedInBefore, markUserAsLoggedIn } from './authService';
+import { AuthErrorDetail, AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember, clearMustChangePassword, hasUserLoggedInBefore, markUserAsLoggedIn } from './authService';
 import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
 import { getCurrentAcademicSession, getCurrentSemesterKey, nextAcademicSession, setActiveAcademicSession } from './academicUtils';
 import { internalAuthEmail, legacyInternalAuthEmail, normalizeInstitutionalIdentifier } from './institutionalIdentity';
@@ -8,7 +8,6 @@ import { internalAuthEmail, legacyInternalAuthEmail, normalizeInstitutionalIdent
 type ProfileRow = {
   user_id: string;
   full_name: string;
-  email: string;
   role: string;
   department: string;
   faculty: string;
@@ -26,7 +25,6 @@ type StaffProfileRow = { staff_id?: string | null; level?: string | null; admiss
 const profileFromRow = (row: ProfileRow, details: StudentRow | StaffProfileRow = {}): UserProfile => ({
   id: row.user_id,
   name: row.full_name,
-  email: row.email,
   role: normalizeProfileRole(row.role)!,
   department: row.department,
   faculty: row.faculty,
@@ -42,12 +40,13 @@ const profileFromRow = (row: ProfileRow, details: StudentRow | StaffProfileRow =
   resultPromptDismissedSemester: 'result_prompt_dismissed_semester' in details ? details.result_prompt_dismissed_semester || undefined : undefined,
   transcriptFileName: undefined,
   mustChangePassword: 'must_change_password' in details ? details.must_change_password || false : false,
-  hasLoggedInBefore: hasUserLoggedInBefore(row.user_id) || hasUserLoggedInBefore(row.email),
+  hasLoggedInBefore: hasUserLoggedInBefore(row.user_id)
+    || ('matric_no' in details && details.matric_no ? hasUserLoggedInBefore(details.matric_no) : false)
+    || ('staff_id' in details && details.staff_id ? hasUserLoggedInBefore(details.staff_id) : false),
 });
 
 const identityToRow = (profile: UserProfile) => ({
   full_name: profile.name,
-  email: profile.email,
   role: profile.role,
   department: profile.department,
   faculty: profile.faculty,
@@ -86,8 +85,11 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 async function getProfileForUser(user: User): Promise<UserProfile | null> {
   const client = getSupabaseClient();
   if (!client) return null;
-  const { data, error } = await client.from('profiles').select('user_id,full_name,email,role,department,faculty').eq('user_id', user.id).maybeSingle();
-  if (error) throw error;
+  const { data, error } = await client.from('profiles').select('user_id,full_name,role,department,faculty').eq('user_id', user.id).maybeSingle();
+  if (error) {
+    console.error('[LASU AuthFlow] Failed to query public.profiles for user_id:', user.id, error);
+    throw error;
+  }
   if (!data) return null;
   const identityRow = data as ProfileRow;
   const role = normalizeProfileRole(identityRow.role);
@@ -115,7 +117,7 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
       console.warn('Could not load adviser_assignments for the signed-in profile', assignmentError);
     } else if (assignment) {
       const [{ data: adviser, error: adviserError }, { data: adviserDetails, error: adviserDetailsError }] = await Promise.all([
-        client.from('profiles').select('full_name,email,department').eq('user_id', assignment.adviser_id).maybeSingle(),
+        client.from('profiles').select('full_name,department').eq('user_id', assignment.adviser_id).maybeSingle(),
         client.from('staff_profiles').select('avatar_url').eq('user_id', assignment.adviser_id).maybeSingle(),
       ]);
       if (adviserError) console.warn('Could not load assigned adviser profile', adviserError);
@@ -123,7 +125,6 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
       if (adviser) {
         profile.assignedAdviserId = assignment.adviser_id;
         profile.assignedAdviserName = adviser.full_name;
-        profile.assignedAdviserEmail = adviser.email;
         profile.assignedAdviserAvatar = adviserDetails?.avatar_url || undefined;
         profile.assignedAdviserTitle = `Level Adviser, ${adviser.department}`;
       }
@@ -132,63 +133,129 @@ async function getProfileForUser(user: User): Promise<UserProfile | null> {
   return profile;
 }
 
+const buildAuthFailure = (
+  stage: AuthErrorDetail['stage'],
+  message: string,
+  error?: unknown,
+  identifier?: string
+): AuthResult => {
+  const errObj = error && typeof error === 'object' ? (error as { code?: unknown; status?: unknown; message?: unknown }) : null;
+  const detail: AuthErrorDetail = {
+    stage,
+    code: typeof errObj?.code === 'string' ? errObj.code : undefined,
+    status: typeof errObj?.status === 'number' ? errObj.status : undefined,
+    message: typeof errObj?.message === 'string' && errObj.message ? errObj.message : message,
+    identifier,
+    timestamp: new Date().toISOString(),
+  };
+  console.error('[LASU AuthFlow] Authentication failure:', detail, error);
+  return { success: false, error: message, errorDetails: detail };
+};
+
 export async function signInAccount(identifier: string, password: string): Promise<AuthResult> {
   // Local accounts are a development-only demo path.
   const localAuth = authenticateUser(identifier, password);
   if (!isSupabaseConfigured && localAuth.success && localAuth.profile) {
-    const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(localAuth.profile.email);
+    const idKey = localAuth.profile.matricNo || localAuth.profile.staffId || localAuth.profile.id;
+    const isFirstLogin = !localAuth.profile.hasLoggedInBefore && !hasUserLoggedInBefore(localAuth.profile.id) && !hasUserLoggedInBefore(idKey);
     if (isFirstLogin) {
       markUserAsLoggedIn(localAuth.profile.id);
-      markUserAsLoggedIn(localAuth.profile.email);
+      markUserAsLoggedIn(idKey);
       localAuth.profile.hasLoggedInBefore = true;
     }
     return { success: true, profile: localAuth.profile, isFirstLogin };
   }
 
   if (!isSupabaseConfigured) {
-    if (import.meta.env.PROD) return { success: false, error: supabaseConfigurationError || 'Live authentication is not configured.' };
+    if (import.meta.env.PROD) {
+      return buildAuthFailure('supabase_config', supabaseConfigurationError || 'Live authentication is not configured.', undefined, identifier);
+    }
     return localAuth;
   }
   const client = getSupabaseClient();
-  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+  if (!client) {
+    return buildAuthFailure('supabase_config', 'Authentication service is unavailable.', undefined, identifier);
+  }
   const normalizedIdentifier = normalizeInstitutionalIdentifier(identifier);
-  if (!normalizedIdentifier) return { success: false, error: 'Enter your matriculation or registration number.' };
+  if (!normalizedIdentifier) {
+    return buildAuthFailure('credential_validation', 'Enter your matriculation, registration, or staff ID.', undefined, identifier);
+  }
+
+  let authStage: AuthErrorDetail['stage'] = 'supabase_sign_in';
   let signInResponse: Awaited<ReturnType<typeof client.auth.signInWithPassword>>;
   try {
-    signInResponse = await client.auth.signInWithPassword({ email: internalAuthEmail(normalizedIdentifier), password });
+    const primaryKey = internalAuthEmail(normalizedIdentifier);
+    signInResponse = await client.auth.signInWithPassword({ email: primaryKey, password });
     // Accounts created before the internal-domain fix used this legacy value.
     // Try it only after the canonical identity is rejected; users never supply it.
     if (signInResponse.error?.code === 'invalid_credentials') {
-      signInResponse = await client.auth.signInWithPassword({ email: legacyInternalAuthEmail(normalizedIdentifier), password });
+      console.warn('[LASU AuthFlow] Primary sign-in rejected with invalid_credentials; attempting legacy internal identifier fallback.', {
+        identifier: normalizedIdentifier,
+        status: signInResponse.error.status,
+      });
+      authStage = 'legacy_fallback_sign_in';
+      const fallbackResponse = await client.auth.signInWithPassword({ email: legacyInternalAuthEmail(normalizedIdentifier), password });
+      if (!fallbackResponse.error) {
+        signInResponse = fallbackResponse;
+      } else {
+        console.warn('[LASU AuthFlow] Legacy fallback sign-in also rejected.', {
+          identifier: normalizedIdentifier,
+          code: fallbackResponse.error.code,
+          status: fallbackResponse.error.status,
+          message: fallbackResponse.error.message,
+        });
+      }
     }
   } catch (connectionError) {
-    return { success: false, error: describeSupabaseConnectionError(connectionError) };
+    return buildAuthFailure(authStage, describeSupabaseConnectionError(connectionError), connectionError, normalizedIdentifier);
   }
+
   const { data, error } = signInResponse;
   if (error) {
     if (error.code === 'invalid_credentials') {
-      return { success: false, error: 'Matriculation/registration number or password is incorrect. Check the number exactly as it appears on your LASU record.' };
+      return buildAuthFailure(
+        authStage,
+        `Invalid credentials for "${normalizedIdentifier}". Verify your Matric/Staff ID and password against the Supabase database.`,
+        error,
+        normalizedIdentifier
+      );
     }
-    return { success: false, error: error.message };
+    if (error.code === 'email_not_confirmed' || /not confirmed/i.test(error.message)) {
+      return buildAuthFailure(
+        authStage,
+        `Account "${normalizedIdentifier}" is not confirmed in Supabase Auth. Run the seed/migration confirmation step and try again.`,
+        error,
+        normalizedIdentifier
+      );
+    }
+    return buildAuthFailure(authStage, error.message || 'Supabase authentication failed.', error, normalizedIdentifier);
   }
+
   try {
     const profile = await getProfileForUser(data.user);
     if (!profile) {
       await client.auth.signOut();
-      return { success: false, error: 'Your account was authenticated, but the student profile was not found. Apply the LASU Advisor Supabase migration and check the on_auth_user_created_lasu_profile trigger, then try again.' };
+      return buildAuthFailure(
+        'profile_fetch',
+        `Authenticated in Supabase Auth for "${normalizedIdentifier}", but no matching row was found in public.profiles.`,
+        undefined,
+        normalizedIdentifier
+      );
     }
-    const isFirstLogin = !profile.hasLoggedInBefore && !hasUserLoggedInBefore(profile.id) && !hasUserLoggedInBefore(profile.email);
+    const idKey = profile.matricNo || profile.staffId || profile.id;
+    const isFirstLogin = !profile.hasLoggedInBefore && !hasUserLoggedInBefore(profile.id) && !hasUserLoggedInBefore(idKey);
     if (isFirstLogin) {
       markUserAsLoggedIn(profile.id);
-      markUserAsLoggedIn(profile.email);
+      markUserAsLoggedIn(idKey);
       profile.hasLoggedInBefore = true;
       persistUserProfile(profile).catch((e) => console.warn('Could not persist hasLoggedInBefore to profile', e));
     }
     return { success: true, profile, isFirstLogin };
   } catch (profileError) {
-    console.error('signInAccount profile load failed:', profileError);
-    await client.auth.signOut();
-    return { success: false, error: getErrorMessage(profileError, 'Could not load your profile.') };
+    await client.auth.signOut().catch(() => {});
+    const message = getErrorMessage(profileError, 'Could not load your profile from Supabase.');
+    const stage: AuthErrorDetail['stage'] = /unsupported profile role/i.test(message) ? 'role_verification' : 'profile_fetch';
+    return buildAuthFailure(stage, message, profileError, normalizedIdentifier);
   }
 }
 
@@ -208,7 +275,7 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
 
   let shouldFallbackToClientSignUp = false;
   try {
-    const response = await fetch('/.netlify/functions/student-register', {
+    const response = await fetch('/api/student-register', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...data, matricNo }),
     });
@@ -323,12 +390,11 @@ export async function persistResultPromptDismissal(userId: string, semesterKey: 
 }
 
 export async function loadStudentAdvisers(profile: UserProfile): Promise<Adviser[]> {
-  const fallback: Adviser[] = profile.assignedAdviserEmail ? [{
-    id: profile.assignedAdviserId || profile.assignedAdviserEmail,
+  const fallback: Adviser[] = profile.assignedAdviserId ? [{
+    id: profile.assignedAdviserId,
     name: profile.assignedAdviserName || 'Level Adviser',
     title: profile.assignedAdviserTitle || 'Level Adviser',
     department: profile.department,
-    email: profile.assignedAdviserEmail,
     avatarUrl: profile.assignedAdviserAvatar || '',
     assignedLevel: profile.level || '',
     assignedSession: profile.admissionSession,
@@ -353,7 +419,7 @@ export async function loadStudentAdvisers(profile: UserProfile): Promise<Adviser
 
   const adviserIds = [...new Set(assignments.map((assignment) => assignment.adviser_id))];
   const [{ data: adviserProfiles, error: adviserError }, { data: staffDetails, error: staffDetailsError }] = await Promise.all([
-    client.from('profiles').select('user_id,full_name,email,department').in('user_id', adviserIds),
+    client.from('profiles').select('user_id,full_name,department').in('user_id', adviserIds),
     client.from('staff_profiles').select('user_id,avatar_url').in('user_id', adviserIds),
   ]);
   if (adviserError) throw adviserError;
@@ -369,7 +435,6 @@ export async function loadStudentAdvisers(profile: UserProfile): Promise<Adviser
       name: adviser.full_name,
       title: `Level Adviser, ${adviser.department}`,
       department: adviser.department,
-      email: adviser.email,
       avatarUrl: avatarById.get(adviser.user_id) || '',
       assignedLevel: assignment.level,
       assignedSession: assignment.admission_session,
@@ -394,7 +459,7 @@ export async function loadAcademicAnalytics(): Promise<AcademicAnalytics | null>
 export async function persistAdviserAssignment(adviserId: string, department: string, admissionSession: string, level: string): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return;
-  const { data: adviser, error: profileError } = await client.from('profiles').select('user_id').eq('email', adviserId).eq('role', 'lecturer').eq('department', department).maybeSingle();
+  const { data: adviser, error: profileError } = await client.from('profiles').select('user_id').eq('user_id', adviserId).eq('role', 'lecturer').eq('department', department).maybeSingle();
   if (profileError) throw profileError;
   if (!adviser) throw new Error('Select an active lecturer in your department.');
   const { error } = await client.from('adviser_assignments').upsert({ adviser_id: adviser.user_id, department, admission_session: admissionSession, level }, { onConflict: 'department,admission_session,level' });
@@ -453,32 +518,30 @@ export async function loadLatestTranscript(userId: string): Promise<{ courses: C
 
 export async function persistDirectMessage(input: {
   senderId: string;
-  recipientEmail: string;
+  recipientId: string;
   body: string;
 }): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return;
-  const { data: recipient, error: recipientError } = await client.from('profiles').select('user_id').eq('email', input.recipientEmail).maybeSingle();
-  if (recipientError) throw recipientError;
-  if (!recipient) throw new Error('This adviser does not have an active messaging account yet.');
-  const threadKey = [input.senderId, recipient.user_id].sort().join(':');
+  if (!input.recipientId) throw new Error('This contact does not have an active messaging account yet.');
+  const threadKey = [input.senderId, input.recipientId].sort().join(':');
   const { error } = await client.from('messages').insert({
     sender_id: input.senderId,
-    recipient_id: recipient.user_id,
+    recipient_id: input.recipientId,
     body: input.body,
     thread_key: threadKey,
   });
   if (error) throw error;
 }
 
-export async function loadDirectMessages(userId: string, role: UserRole = 'student'): Promise<Array<{ email: string; message: { id: string; sender: 'student' | 'adviser'; senderName: string; text: string; timestamp: string; isRead?: boolean }; threadKey: string }>> {
+export async function loadDirectMessages(userId: string, role: UserRole = 'student'): Promise<Array<{ contactId: string; message: { id: string; sender: 'student' | 'adviser'; senderName: string; text: string; timestamp: string; isRead?: boolean }; threadKey: string }>> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return [];
   const { data: rows, error } = await client.from('messages').select('id,sender_id,recipient_id,body,thread_key,created_at,read_at').or(`sender_id.eq.${userId},recipient_id.eq.${userId}`).order('created_at', { ascending: true });
   if (error) throw error;
   if (!rows?.length) return [];
   const otherIds = [...new Set(rows.map((row) => row.sender_id === userId ? row.recipient_id : row.sender_id))];
-  const { data: profiles, error: profileError } = await client.from('profiles').select('user_id,email,full_name').in('user_id', otherIds);
+  const { data: profiles, error: profileError } = await client.from('profiles').select('user_id,full_name').in('user_id', otherIds);
   if (profileError) throw profileError;
   const byId = new Map((profiles || []).map((profile) => [profile.user_id, profile]));
   return rows.flatMap((row) => {
@@ -486,7 +549,7 @@ export async function loadDirectMessages(userId: string, role: UserRole = 'stude
     const contact = byId.get(otherId);
     if (!contact) return [];
     return [{
-      email: contact.email,
+      contactId: contact.user_id,
       threadKey: row.thread_key,
       message: {
         id: String(row.id),
@@ -504,7 +567,7 @@ export async function loadStaffMessageContacts(profile: UserProfile): Promise<Me
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured || !['hod', 'dean'].includes(profile.role)) return [];
   const roles = profile.role === 'hod' ? ['lecturer', 'dean'] : ['hod'];
-  let query = client.from('profiles').select('user_id,full_name,email,role,department,faculty').in('role', roles);
+  let query = client.from('profiles').select('user_id,full_name,role,department,faculty').in('role', roles);
   if (profile.role === 'hod') query = query.or(`department.eq.${profile.department},faculty.eq.${profile.faculty}`);
   else query = query.eq('faculty', profile.faculty);
   const { data, error } = await query.order('full_name');
@@ -516,7 +579,6 @@ export async function loadStaffMessageContacts(profile: UserProfile): Promise<Me
   return (data || []).map((row) => ({
     id: row.user_id,
     name: row.full_name,
-    email: row.email,
     role: row.role as UserRole,
     department: row.department,
     avatarUrl: avatarById.get(row.user_id) || undefined,
@@ -527,7 +589,7 @@ export async function loadLecturerConversations(userId: string): Promise<Student
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return [];
   const { data: studentProfiles, error: studentError } = await client.from('profiles')
-    .select('user_id,full_name,email,department')
+    .select('user_id,full_name,department')
     .eq('role', 'student');
   if (studentError) throw studentError;
   const studentIdsForDetails = (studentProfiles || []).map((student) => student.user_id);
@@ -577,7 +639,6 @@ export async function loadLecturerConversations(userId: string): Promise<Student
     return {
       id: `student-${student.user_id}`,
       studentId: student.user_id,
-      studentEmail: student.email,
       studentName: student.full_name,
       matricNo: student.matric_no || '',
       level: student.level || '',
@@ -596,13 +657,10 @@ export async function loadLecturerConversations(userId: string): Promise<Student
   });
 }
 
-export async function markDirectMessagesRead(userId: string, senderEmail: string): Promise<void> {
+export async function markDirectMessagesRead(userId: string, senderId: string): Promise<void> {
   const client = getSupabaseClient();
-  if (!client || !isSupabaseConfigured) return;
-  const { data: sender, error: profileError } = await client.from('profiles').select('user_id').eq('email', senderEmail).maybeSingle();
-  if (profileError) throw profileError;
-  if (!sender) return;
-  const { error } = await client.from('messages').update({ read_at: new Date().toISOString() }).eq('sender_id', sender.user_id).eq('recipient_id', userId).is('read_at', null);
+  if (!client || !isSupabaseConfigured || !senderId) return;
+  const { error } = await client.from('messages').update({ read_at: new Date().toISOString() }).eq('sender_id', senderId).eq('recipient_id', userId).is('read_at', null);
   if (error) throw error;
 }
 
@@ -680,7 +738,7 @@ export async function registerStaffAccount(
       }
       const profileRow = result.staff;
       const profile: UserProfile = {
-        id: profileRow.id, name: profileRow.full_name, email: profileRow.email, role: profileRow.role,
+        id: profileRow.id, name: profileRow.full_name, role: profileRow.role,
         department: profileRow.department, faculty: profileRow.faculty, staffId: profileRow.staff_id,
         level: profileRow.level || undefined, phone: profileRow.phone || undefined, avatarUrl: '', mustChangePassword: true,
       };
@@ -697,7 +755,7 @@ export async function loadStaffDirectory(): Promise<StaffMember[]> {
   const client = getSupabaseClient();
   if (!client) return [];
   const { data, error } = await client.from('profiles')
-    .select('user_id,full_name,email,role,department,faculty,created_at')
+    .select('user_id,full_name,role,department,faculty,created_at')
     .in('role', ['lecturer', 'hod', 'dean']);
   if (error) throw error;
   if (!data || data.length === 0) return getStaffDirectory();
@@ -706,7 +764,7 @@ export async function loadStaffDirectory(): Promise<StaffMember[]> {
   if (detailsError) throw detailsError;
   const detailById = new Map((details || []).map((row) => [row.user_id, row]));
   return (data || []).map((row) => ({
-    id: row.user_id, name: row.full_name, email: row.email, staffId: detailById.get(row.user_id)?.staff_id || '',
+    id: row.user_id, name: row.full_name, staffId: detailById.get(row.user_id)?.staff_id || '',
     role: row.role, department: row.department, faculty: row.faculty,
     assignedLevel: detailById.get(row.user_id)?.level || undefined, assignedSession: detailById.get(row.user_id)?.admission_session || undefined,
     phone: detailById.get(row.user_id)?.phone || undefined, avatarUrl: '', status: 'Active',
@@ -719,7 +777,7 @@ export async function loadAdministrators(): Promise<AdministratorProfile[]> {
   const client = getSupabaseClient();
   if (!client) return [];
   const { data, error } = await client.from('profiles')
-    .select('user_id,full_name,email,department,faculty')
+    .select('user_id,full_name,department,faculty')
     .eq('role', 'admin').order('full_name');
   if (error) throw error;
   const ids = (data || []).map((row) => row.user_id);
@@ -727,7 +785,7 @@ export async function loadAdministrators(): Promise<AdministratorProfile[]> {
   if (detailsError) throw detailsError;
   const detailById = new Map((details || []).map((row) => [row.user_id, row]));
   return (data || []).map((row) => ({
-    id: row.user_id, name: row.full_name, email: row.email, staffId: detailById.get(row.user_id)?.staff_id || '',
+    id: row.user_id, name: row.full_name, staffId: detailById.get(row.user_id)?.staff_id || '',
     department: row.department, faculty: row.faculty, phone: detailById.get(row.user_id)?.phone || undefined,
   }));
 }
@@ -739,7 +797,7 @@ export async function registerAdministratorAccount(payload: AdministratorRegistr
   const { data, error } = await client.auth.getSession();
   if (error || !data.session?.access_token) return { success: false, error: 'Sign in as a system administrator before registering another administrator.' };
   try {
-    const response = await fetch('/.netlify/functions/admin-register-administrator', {
+    const response = await fetch('/api/admin-register-administrator', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
       body: JSON.stringify(payload),
@@ -753,7 +811,7 @@ export async function registerAdministratorAccount(payload: AdministratorRegistr
   }
 }
 
-export type AdministratorProfileUpdate = Omit<AdministratorProfile, 'id' | 'email'>;
+export type AdministratorProfileUpdate = Omit<AdministratorProfile, 'id'>;
 
 export async function updateAdministratorProfile(id: string, updates: AdministratorProfileUpdate): Promise<{ success: boolean; error?: string }> {
   const client = getSupabaseClient();

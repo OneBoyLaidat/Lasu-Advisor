@@ -1,6 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createServiceClient, isStrongPassword, parseJsonBody, sendJson } from './_lib/supabase';
+import { createServiceClient, internalEmail, isStrongPassword, normalizeIdentifier, parseJsonBody, sendJson } from './_lib/supabase';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed.' });
@@ -9,7 +9,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     SUPABASE_URL: url,
     SUPABASE_SERVICE_ROLE_KEY: serviceKey,
     SUPER_ADMIN_BOOTSTRAP_TOKEN: bootstrapToken,
-    SUPER_ADMIN_EMAIL_ALLOWLIST: allowlist = '',
+    SUPER_ADMIN_STAFF_ID_ALLOWLIST: allowlist = '',
   } = process.env;
   if (!url || !serviceKey || !bootstrapToken) {
     return sendJson(res, 503, { error: 'Super-admin bootstrap is not configured on the server.' });
@@ -27,15 +27,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!input) return sendJson(res, 400, { error: 'Invalid request body.' });
 
   const name = String(input.name || '').trim();
-  const email = String(input.email || '').trim().toLowerCase();
+  const staffId = normalizeIdentifier(input.staffId || input.identifier);
   const password = String(input.password || '');
-  const allowedEmails = allowlist.split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean);
-  if (!allowedEmails.includes(email)) {
-    return sendJson(res, 403, { error: 'This email address is not on the bootstrap allowlist.' });
+  const allowedIds = allowlist.split(',').map((entry) => normalizeIdentifier(entry)).filter(Boolean);
+  if (!staffId || (allowedIds.length > 0 && !allowedIds.includes(staffId))) {
+    return sendJson(res, 403, { error: 'This Staff ID is not on the bootstrap allowlist.' });
   }
-  if (name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return sendJson(res, 400, { error: 'Enter a valid name and allowed email address.' });
+  if (name.length < 2) {
+    return sendJson(res, 400, { error: 'Enter a valid name and Staff ID.' });
   }
+  const email = internalEmail(staffId);
   if (!isStrongPassword(password)) {
     return sendJson(res, 400, {
       error: 'Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.',
@@ -72,6 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { error: detailsError } = await service.from('staff_profiles').insert({
     user_id: created.user.id,
+    staff_id: staffId,
     must_change_password: false,
   });
   if (detailsError) {
@@ -82,5 +84,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   await service.from('students').delete().eq('user_id', created.user.id);
   await service.from('super_admin_bootstrap_claims').update({ auth_user_id: created.user.id }).eq('singleton', true);
-  return sendJson(res, 201, { success: true, email, profileId: created.user.id, portalPath: '/admin-portal' });
+  return sendJson(res, 201, { success: true, staffId, profileId: created.user.id, portalPath: '/admin-portal' });
 }

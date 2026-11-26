@@ -3,6 +3,7 @@ import { OFFICIAL_LOGO_URL } from '../constants/assets';
 import { UserProfile, LASU_DEPARTMENTS, EntryMode } from '../types';
 import { getRegisteredAccounts } from '../lib/authService';
 import { resetPasswordDirectly, signInAccount, signUpAccount } from '../lib/liveDataService';
+import type { AuthErrorDetail } from '../lib/authService';
 import { isSupabaseConfigured } from '../lib/supabaseClient';
 import { normalizeInstitutionalIdentifier } from '../lib/institutionalIdentity';
 import {
@@ -84,6 +85,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
   // Status & Feedback
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<AuthErrorDetail | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showDemoCredentials, setShowDemoCredentials] = useState<boolean>(false);
 
@@ -162,13 +164,22 @@ export const AuthView: React.FC<AuthViewProps> = ({
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setErrorDetails(null);
     setSuccessMessage(null);
     setIsLoading(true);
 
     try {
       const result = await signInAccount(identifier, password);
       if (!result.success || !result.profile) {
-        setErrorMessage(result.error || 'Access denied. Check your matric/registration number and password.');
+        const fallbackDetail: AuthErrorDetail = result.errorDetails || {
+          stage: 'supabase_sign_in',
+          message: result.error || 'Access denied. Check your matric/registration/staff ID and password.',
+          identifier: normalizeInstitutionalIdentifier(identifier),
+          timestamp: new Date().toISOString(),
+        };
+        console.error('[LASU AuthView] Login rejected at end of auth flow:', fallbackDetail);
+        setErrorDetails(fallbackDetail);
+        setErrorMessage(result.error || 'Access denied. Check your matric/registration/staff ID and password.');
         return;
       }
       if (result.isFirstLogin) {
@@ -185,7 +196,15 @@ export const AuthView: React.FC<AuthViewProps> = ({
 
       onLoginSuccess(result.profile, Boolean(result.isFirstLogin));
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Could not sign in. Please try again.');
+      const detail: AuthErrorDetail = {
+        stage: 'session_finalization',
+        message: error instanceof Error ? error.message : 'Unexpected authentication error.',
+        identifier: normalizeInstitutionalIdentifier(identifier),
+        timestamp: new Date().toISOString(),
+      };
+      console.error('[LASU AuthView] Unhandled exception at end of auth flow:', detail, error);
+      setErrorDetails(detail);
+      setErrorMessage(detail.message);
     } finally {
       setIsLoading(false);
     }
@@ -322,7 +341,14 @@ export const AuthView: React.FC<AuthViewProps> = ({
               </span>
               <div className="leading-snug">
                 <span className="font-bold block mb-0.5">Authentication Error</span>
-                {errorMessage}
+                <p>{errorMessage}</p>
+                {errorDetails && (
+                  <p className="mt-1 text-[10px] font-mono text-rose-700/90 dark:text-rose-300/90">
+                    Stage: {errorDetails.stage}
+                    {errorDetails.code ? ` • Code: ${errorDetails.code}` : ''}
+                    {errorDetails.status ? ` • HTTP ${errorDetails.status}` : ''}
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -944,7 +970,7 @@ export const AuthView: React.FC<AuthViewProps> = ({
                 </div>
               </div>
 
-              {/* Local demo mode supports account IDs; live recovery uses Auth email links. */}
+              {/* Local demo mode supports account IDs; live recovery requires signed-in session or administrator reset. */}
               {!isSupabaseConfigured && <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                   Account Category
