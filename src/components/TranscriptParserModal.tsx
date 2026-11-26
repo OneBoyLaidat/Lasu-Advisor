@@ -15,7 +15,7 @@ interface TranscriptParserModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDismissPrompt?: () => void;
-  expectedStudentName: string;
+  expectedStudentName?: string;
   expectedMatricNo?: string;
   onTranscriptParsed: (
     courses: CourseResult[],
@@ -45,7 +45,6 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
   const [activeTab, setActiveTab] = useState<'upload' | 'extracted'>('upload');
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const normalizeName = (value: string) => value.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
   if (!isOpen) return null;
 
@@ -270,24 +269,17 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       ...(parsedData.refNo ? [normalizeInstitutionalIdentifier(parsedData.refNo)] : []),
     ].filter(Boolean));
 
-    if (normalizedExpectedId) {
-      if (extractedIds.size === 0) {
-        setValidationError('The matriculation or registration number could not be verified from the uploaded PDF. Upload a clearer official result slip.');
-        return;
-      }
-      if (!extractedIds.has(normalizedExpectedId)) {
-        const detectedLabel = parsedData.matricNo || parsedData.registrationNo || parsedData.refNo || Array.from(extractedIds)[0];
-        setValidationError(`The matriculation / registration number on this document (“${detectedLabel}”) does not match your account (“${expectedMatricNo}”). Please upload your own result slip.`);
-        return;
-      }
-    }
-
-    if (!parsedData.studentName?.trim()) {
-      setValidationError('The student name could not be verified from the document. Upload a clearer PDF before saving.');
+    if (!normalizedExpectedId) {
+      setValidationError('Your account is missing a matriculation or registration number. Update your profile before uploading results.');
       return;
     }
-    if (normalizeName(parsedData.studentName) !== normalizeName(expectedStudentName)) {
-      setValidationError(`The document name “${parsedData.studentName}” does not match the signed-in profile name “${expectedStudentName}”. Verify that you selected the correct result slip.`);
+    if (extractedIds.size === 0) {
+      setValidationError('The matriculation or registration number could not be verified from the uploaded PDF. Upload a clearer official result slip.');
+      return;
+    }
+    if (!extractedIds.has(normalizedExpectedId)) {
+      const detectedLabel = parsedData.matricNo || parsedData.registrationNo || parsedData.refNo || Array.from(extractedIds)[0];
+      setValidationError(`The matriculation / registration number on this document (“${detectedLabel}”) does not match your account (“${expectedMatricNo}”). Please upload your own result slip.`);
       return;
     }
 
