@@ -28,6 +28,10 @@ begin
         email,
         encrypted_password,
         email_confirmed_at,
+        confirmation_token,
+        recovery_token,
+        email_change_token_new,
+        email_change,
         raw_app_meta_data,
         raw_user_meta_data,
         created_at,
@@ -41,6 +45,10 @@ begin
         seed.auth_email,
         extensions.crypt('LasuTest@123', extensions.gen_salt('bf')),
         now(),
+        '',
+        '',
+        '',
+        '',
         '{"provider":"email","providers":["email"]}'::jsonb,
         jsonb_build_object('full_name', seed.full_name),
         now(),
@@ -50,9 +58,35 @@ begin
       update auth.users
       set encrypted_password = extensions.crypt('LasuTest@123', extensions.gen_salt('bf')),
           email_confirmed_at = coalesce(email_confirmed_at, now()),
+          confirmation_token = coalesce(confirmation_token, ''),
+          recovery_token = coalesce(recovery_token, ''),
+          email_change_token_new = coalesce(email_change_token_new, ''),
+          email_change = coalesce(email_change, ''),
           updated_at = now()
       where id = target_user_id;
     end if;
+
+    insert into auth.identities (
+      id,
+      user_id,
+      provider_id,
+      identity_data,
+      provider,
+      last_sign_in_at,
+      created_at,
+      updated_at
+    )
+    values (
+      gen_random_uuid(),
+      target_user_id,
+      target_user_id::text,
+      jsonb_build_object('sub', target_user_id::text, 'email', seed.auth_email),
+      'email',
+      now(),
+      now(),
+      now()
+    )
+    on conflict (provider_id, provider) do nothing;
 
     insert into public.profiles (user_id, full_name, email, role, department, faculty)
     values (target_user_id, seed.full_name, seed.auth_email, seed.role_name, seed.department, seed.faculty)
