@@ -70,9 +70,16 @@ const detailsToRow = (profile: UserProfile) => profile.role === 'student' ? ({
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof Error && error.message) return error.message;
-  if (error && typeof error === 'object' && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
-    return (error as { message: string }).message || fallback;
+  if (error && typeof error === 'object') {
+    const errObj = error as { message?: unknown; code?: unknown; details?: unknown; hint?: unknown };
+    const parts = [errObj.message, errObj.details, errObj.hint]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
+    if (parts.length > 0) return parts.join(' — ');
+    if (typeof errObj.code === 'string' && errObj.code.trim().length > 0) {
+      return `${fallback} (${errObj.code})`;
+    }
   }
+  if (typeof error === 'string' && error.trim().length > 0) return error;
   return fallback;
 };
 
@@ -174,6 +181,7 @@ export async function signInAccount(identifier: string, password: string): Promi
     }
     return { success: true, profile, isFirstLogin };
   } catch (profileError) {
+    console.error('signInAccount profile load failed:', profileError);
     await client.auth.signOut();
     return { success: false, error: getErrorMessage(profileError, 'Could not load your profile.') };
   }

@@ -28,9 +28,19 @@ export const isSupabaseConfigured = supabaseConfigurationError === null;
 
 export function describeSupabaseConnectionError(error: unknown): string {
   if (error instanceof TypeError && /fetch/i.test(error.message)) {
-    return 'Could not reach Supabase. Check that VITE_SUPABASE_URL is the active project URL and VITE_SUPABASE_ANON_KEY is its anon/publishable key in Netlify, then trigger a new deploy. Also check Supabase → Authentication → URL Configuration includes this site URL.';
+    return 'Could not reach Supabase. Check that VITE_SUPABASE_URL is the active project URL and VITE_SUPABASE_ANON_KEY is its anon/publishable key, then trigger a new deploy. Also check Supabase → Authentication → URL Configuration includes this site URL.';
   }
-  return error instanceof Error ? error.message : 'Could not connect to Supabase. Check the project URL and network connection.';
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object') {
+    const errObj = error as { message?: unknown; details?: unknown; hint?: unknown; code?: unknown };
+    const parts = [errObj.message, errObj.details, errObj.hint]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0);
+    if (parts.length > 0) return parts.join(' — ');
+    if (typeof errObj.code === 'string' && errObj.code.trim().length > 0) {
+      return `Supabase error (${errObj.code}).`;
+    }
+  }
+  return 'Could not connect to Supabase. Check the project URL and network connection.';
 }
 
 export let supabase: SupabaseClient | null = null;
