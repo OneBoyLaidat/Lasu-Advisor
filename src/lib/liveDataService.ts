@@ -177,16 +177,69 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
   if (data.role !== 'student') return { success: false, error: 'Staff accounts are provisioned by faculty administrators. Please request an invitation.' };
   const matricNo = normalizeInstitutionalIdentifier(data.matricNo || '');
   if (!matricNo) return { success: false, error: 'A matriculation or registration number is required.' };
+
+  const client = getSupabaseClient();
+  if (!client) return { success: false, error: 'Authentication service is unavailable.' };
+
+  let shouldFallbackToClientSignUp = false;
   try {
-    const response = await fetch('/.netlify/functions/student-register', {
+    const response = await fetch('/api/student-register', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...data, matricNo }),
     });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) return { success: false, error: payload.error || 'Could not create the student account.' };
-  } catch (connectionError) {
-    return { success: false, error: describeSupabaseConnectionError(connectionError) };
+    const contentType = response.headers.get('content-type') || '';
+    const isJson = contentType.includes('application/json');
+    const payload = isJson ? await response.json().catch(() => ({})) : {};
+
+    if (response.ok && isJson) {
+      return signInAccount(matricNo, data.password);
+    }
+
+    if (!isJson || [404, 405, 502, 503].includes(response.status)) {
+      shouldFallbackToClientSignUp = true;
+    } else {
+      return { success: false, error: payload.error || 'Could not create the student account.' };
+    }
+  } catch {
+    shouldFallbackToClientSignUp = true;
   }
+
+  if (shouldFallbackToClientSignUp) {
+    try {
+      const { data: signUpData, error: signUpError } = await client.auth.signUp({
+        email: internalAuthEmail(matricNo),
+        password: data.password,
+        options: {
+          data: {
+            account_type: 'student',
+            full_name: data.name.trim(),
+            department: data.department,
+            faculty: data.faculty,
+            matric_no: matricNo,
+            level: data.level || null,
+            admission_session: data.admissionSession || null,
+          },
+        },
+      });
+      if (signUpError) {
+        if (/already registered/i.test(signUpError.message)) {
+          return { success: false, error: 'An account already uses this matriculation or registration number.' };
+        }
+        return { success: false, error: signUpError.message || 'Could not create the student account.' };
+      }
+      if (signUpData.session && signUpData.user) {
+        const profile = await getProfileForUser(signUpData.user);
+        if (profile) {
+          markUserAsLoggedIn(profile.id);
+          profile.hasLoggedInBefore = true;
+          return { success: true, profile, isFirstLogin: true };
+        }
+      }
+    } catch (connectionError) {
+      return { success: false, error: describeSupabaseConnectionError(connectionError) };
+    }
+  }
+
   return signInAccount(matricNo, data.password);
 }
 
@@ -580,7 +633,7 @@ export async function registerStaffAccount(
     const { data: sessionData, error: sessionError } = await client.auth.getSession();
     if (sessionError || !sessionData.session?.access_token) return { success: false, error: 'Sign in as a system administrator before registering staff accounts.' };
     try {
-      const response = await fetch('/.netlify/functions/admin-create-staff', {
+      const response = await fetch('/api/admin-create-staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
         body: JSON.stringify({ ...data, password: data.password || '' }),
@@ -650,7 +703,7 @@ export async function registerAdministratorAccount(payload: AdministratorRegistr
   const { data, error } = await client.auth.getSession();
   if (error || !data.session?.access_token) return { success: false, error: 'Sign in as a system administrator before registering another administrator.' };
   try {
-    const response = await fetch('/.netlify/functions/admin-register-administrator', {
+    const response = await fetch('/api/admin-register-administrator', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
       body: JSON.stringify(payload),
@@ -749,7 +802,7 @@ export async function updateOwnPassword(password: string): Promise<{ success: bo
   const { data, error } = await client.auth.getSession();
   if (error || !data.session?.access_token) return { success: false, error: 'Sign in again to update your password.' };
   try {
-    const response = await fetch('/.netlify/functions/staff-complete-password-change', {
+    const response = await fetch('/api/staff-complete-password-change', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
       body: JSON.stringify({ password }),
     });
@@ -764,7 +817,7 @@ export async function resetStaffCredentials(staffId: string, password: string): 
   const { data, error } = await client.auth.getSession();
   if (error || !data.session?.access_token) return { success: false, error: 'Sign in again before resetting staff credentials.' };
   try {
-    const response = await fetch('/.netlify/functions/admin-reset-staff-password', {
+    const response = await fetch('/api/admin-reset-staff-password', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
       body: JSON.stringify({ staffId, password }),
     });
@@ -786,7 +839,7 @@ export async function revokeStaffAccess(staffId: string): Promise<{ success: boo
     return deleteStaffMember(staffId);
   }
   try {
-    const response = await fetch('/.netlify/functions/admin-revoke-staff', {
+    const response = await fetch('/api/admin-revoke-staff', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
       body: JSON.stringify({ staffId }),
