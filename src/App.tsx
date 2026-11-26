@@ -925,9 +925,10 @@ export function App() {
     passedUnits: number,
     carryoverUnits: number,
     fileName: string,
-    uploadedFile?: File
+    uploadedFile?: File,
+    verifiedDocumentIdentifier?: string
   ) => {
-    await persistTranscript(userProfile, courses, newCgpa, fileName, uploadedFile);
+    await persistTranscript(userProfile, courses, newCgpa, fileName, uploadedFile, verifiedDocumentIdentifier);
     // 1. Update Student's courses & stats
     setCourseResults(courses);
     setStudentStats(() => ({
@@ -1431,7 +1432,6 @@ export function App() {
         isOpen={isTranscriptModalOpen}
         onClose={() => setIsTranscriptModalOpen(false)}
         onDismissPrompt={userRole === 'student' ? handleDismissResultPrompt : undefined}
-        expectedStudentName={userProfile.name}
         expectedMatricNo={userProfile.matricNo}
         onTranscriptParsed={handleTranscriptParsed}
       />

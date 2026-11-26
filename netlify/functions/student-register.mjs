@@ -2,7 +2,8 @@ import { createClient } from '@supabase/supabase-js';
 
 const json = (statusCode, payload) => ({ statusCode, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }, body: JSON.stringify(payload) });
 const normalize = (value) => String(value || '').trim().toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9/_-]/g, '');
-const internalEmail = (identifier) => `id-${normalize(identifier).replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()}@accounts.lasu.invalid`;
+// This deterministic, non-user-facing address must match the browser sign-in helper.
+const internalEmail = (identifier) => `id-${normalize(identifier).replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()}@lasu.edu.ng`;
 const strongPassword = (value) => value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /[0-9]/.test(value) && /[^A-Za-z0-9\s]/.test(value);
 
 export async function handler(event) {

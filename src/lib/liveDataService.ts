@@ -3,7 +3,7 @@ import { AcademicAnalytics, Adviser, CourseResult, MessageContact, StudentConver
 import { AuthResult, authenticateUser, registerNewUser, registerStaffManually, resetAccountPassword, getStaffDirectory, updateStaffMember, deleteStaffMember, clearMustChangePassword, hasUserLoggedInBefore, markUserAsLoggedIn } from './authService';
 import { describeSupabaseConnectionError, getSupabaseClient, isSupabaseConfigured, supabaseConfigurationError } from './supabaseClient';
 import { getCurrentAcademicSession, getCurrentSemesterKey, nextAcademicSession, setActiveAcademicSession } from './academicUtils';
-import { internalAuthEmail, normalizeInstitutionalIdentifier } from './institutionalIdentity';
+import { internalAuthEmail, legacyInternalAuthEmail, normalizeInstitutionalIdentifier } from './institutionalIdentity';
 
 type ProfileRow = {
   user_id: string;
@@ -156,13 +156,18 @@ export async function signInAccount(identifier: string, password: string): Promi
   let signInResponse: Awaited<ReturnType<typeof client.auth.signInWithPassword>>;
   try {
     signInResponse = await client.auth.signInWithPassword({ email: internalAuthEmail(normalizedIdentifier), password });
+    // Accounts created before the internal-domain fix used this legacy value.
+    // Try it only after the canonical identity is rejected; users never supply it.
+    if (signInResponse.error?.code === 'invalid_credentials') {
+      signInResponse = await client.auth.signInWithPassword({ email: legacyInternalAuthEmail(normalizedIdentifier), password });
+    }
   } catch (connectionError) {
     return { success: false, error: describeSupabaseConnectionError(connectionError) };
   }
   const { data, error } = signInResponse;
   if (error) {
     if (error.code === 'invalid_credentials') {
-      return { success: false, error: 'Matriculation/registration number or password is incorrect.' };
+      return { success: false, error: 'Matriculation/registration number or password is incorrect. Check the number exactly as it appears on your LASU record.' };
     }
     return { success: false, error: error.message };
   }
@@ -203,7 +208,7 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
 
   let shouldFallbackToClientSignUp = false;
   try {
-    const response = await fetch('/api/student-register', {
+    const response = await fetch('/.netlify/functions/student-register', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...data, matricNo }),
     });
@@ -261,7 +266,7 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
       if (signUpData.user && !signUpData.session) {
         return {
           success: false,
-          error: 'Account created, but Supabase Auth still has email confirmation enabled. Turn off "Confirm email" in Supabase Authentication → Providers → Email, or set SUPABASE_SERVICE_ROLE_KEY in Vercel.',
+          error: 'Account creation completed, but a session could not be started. Deploy the student-registration function with SUPABASE_SERVICE_ROLE_KEY so identifier-only accounts are provisioned without confirmation messages.',
         };
       }
     } catch (connectionError) {
@@ -401,7 +406,8 @@ export async function persistTranscript(
   courses: CourseResult[],
   cgpa: number,
   fileName: string,
-  file?: File
+  file?: File,
+  verifiedDocumentIdentifier?: string
 ): Promise<void> {
   const client = getSupabaseClient();
   if (!client || !isSupabaseConfigured) return;
@@ -417,6 +423,7 @@ export async function persistTranscript(
     file_name: fileName,
     file_path: filePath,
     document_student_name: profile.name,
+    document_identifier: normalizeInstitutionalIdentifier(verifiedDocumentIdentifier || profile.matricNo || ''),
     courses,
     cgpa,
     semester_key: getCurrentSemesterKey(),

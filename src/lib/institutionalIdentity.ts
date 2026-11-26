@@ -13,3 +13,11 @@ export function internalAuthEmail(identifier: string): string {
   if (!localPart) throw new Error('A valid matriculation or registration number is required.');
   return `id-${localPart}@lasu.edu.ng`;
 }
+
+/** Compatibility for accounts created by the initial identifier-only rollout. */
+export function legacyInternalAuthEmail(identifier: string): string {
+  const normalized = normalizeInstitutionalIdentifier(identifier);
+  const localPart = normalized.replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  if (!localPart) throw new Error('A valid matriculation or registration number is required.');
+  return `id-${localPart}@accounts.lasu.invalid`;
+}

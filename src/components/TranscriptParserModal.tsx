@@ -15,7 +15,6 @@ interface TranscriptParserModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDismissPrompt?: () => void;
-  expectedStudentName?: string;
   expectedMatricNo?: string;
   onTranscriptParsed: (
     courses: CourseResult[],
@@ -24,7 +23,8 @@ interface TranscriptParserModalProps {
     passedUnits: number,
     carryoverUnits: number,
     fileName: string,
-    file?: File
+    file?: File,
+    verifiedDocumentIdentifier?: string
   ) => void | Promise<void>;
 }
 
@@ -32,7 +32,6 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
   isOpen,
   onClose,
   onDismissPrompt,
-  expectedStudentName,
   expectedMatricNo,
   onTranscriptParsed,
 }) => {
@@ -266,7 +265,6 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       ...(parsedData.documentIdentifiers || []),
       ...(parsedData.matricNo ? [normalizeInstitutionalIdentifier(parsedData.matricNo)] : []),
       ...(parsedData.registrationNo ? [normalizeInstitutionalIdentifier(parsedData.registrationNo)] : []),
-      ...(parsedData.refNo ? [normalizeInstitutionalIdentifier(parsedData.refNo)] : []),
     ].filter(Boolean));
 
     if (!normalizedExpectedId) {
@@ -278,7 +276,7 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
       return;
     }
     if (!extractedIds.has(normalizedExpectedId)) {
-      const detectedLabel = parsedData.matricNo || parsedData.registrationNo || parsedData.refNo || Array.from(extractedIds)[0];
+      const detectedLabel = parsedData.matricNo || parsedData.registrationNo || Array.from(extractedIds)[0];
       setValidationError(`The matriculation / registration number on this document (“${detectedLabel}”) does not match your account (“${expectedMatricNo}”). Please upload your own result slip.`);
       return;
     }
@@ -320,7 +318,8 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
         parsedData.passedUnits,
         parsedData.carryoverUnits,
         parsedData.fileName || uploadedFileName || 'LASU_Transcript.pdf',
-        uploadedFile || undefined
+        uploadedFile || undefined,
+        normalizedExpectedId
       );
       onClose();
     } catch (error) {
@@ -532,8 +531,8 @@ export const TranscriptParserModal: React.FC<TranscriptParserModalProps> = ({
 
               <label className="block rounded-xl border border-slate-200 dark:border-slate-700 p-3.5 text-xs">
                 <span className="block font-bold text-slate-900 dark:text-slate-100 mb-1">Name on result document</span>
-                <span className="block text-slate-500 dark:text-slate-400 mb-2">Must match your profile: {expectedStudentName}</span>
-                <input value={parsedData.studentName || ''} readOnly aria-readonly="true" placeholder="Name could not be read from this PDF" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-slate-900 dark:text-slate-100" />
+                <span className="block text-slate-500 dark:text-slate-400 mb-2">Must match your account matriculation / registration number: {expectedMatricNo || 'Not available'}</span>
+                <input value={parsedData.matricNo || parsedData.registrationNo || ''} readOnly aria-readonly="true" placeholder="Matriculation / registration number could not be read from this PDF" className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-slate-900 dark:text-slate-100" />
               </label>
 
               {/* Validation error banner */}

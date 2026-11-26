@@ -170,9 +170,10 @@ export function parseTranscriptText(rawText: string, fileName: string): ParsedTr
 
   addDocumentIdentifier(explicitMatric);
   addDocumentIdentifier(explicitReg);
-  addDocumentIdentifier(refNo);
-
-  const matricNo = explicitMatric || explicitReg || (refNo ? refNo.split('/').pop() : undefined);
+  // A document reference is not an identity credential. Only values explicitly
+  // labelled as a matriculation, student, registration, or application number
+  // may authorize an upload.
+  const matricNo = explicitMatric || explicitReg;
   const registrationNo = explicitReg;
   const documentIdentifiers = Array.from(documentIdentifiersSet);
 
