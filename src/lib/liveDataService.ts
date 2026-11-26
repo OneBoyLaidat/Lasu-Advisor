@@ -739,7 +739,7 @@ export async function registerAdministratorAccount(payload: AdministratorRegistr
   const { data, error } = await client.auth.getSession();
   if (error || !data.session?.access_token) return { success: false, error: 'Sign in as a system administrator before registering another administrator.' };
   try {
-    const response = await fetch('/api/admin-register-administrator', {
+    const response = await fetch('/.netlify/functions/admin-register-administrator', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` },
       body: JSON.stringify(payload),

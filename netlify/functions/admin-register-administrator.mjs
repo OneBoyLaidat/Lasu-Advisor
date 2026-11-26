@@ -26,7 +26,10 @@ export async function handler(event) {
   try { input = JSON.parse(event.body || '{}'); } catch { return json(400, { error: 'Invalid request body.' }); }
   const name = String(input.name || '').trim();
   const staffId = String(input.staffId || '').trim().toUpperCase();
-  const email = String(input.email || '').trim().toLowerCase() || `id-${staffId.replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()}@accounts.lasu.invalid`;
+  // Supabase requires an email-shaped login field internally. Administrators
+  // authenticate with their staff/registration ID; this value is never shown
+  // or used as a contact address.
+  const email = `id-${staffId.replace(/[^A-Z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').toLowerCase()}@lasu.edu.ng`;
   const department = String(input.department || '').trim();
   const faculty = String(input.faculty || '').trim();
   const phone = String(input.phone || '').trim();
