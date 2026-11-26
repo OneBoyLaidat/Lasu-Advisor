@@ -1026,8 +1026,26 @@ export const AuthView: React.FC<AuthViewProps> = ({
                     placeholder="Confirm password"
                     value={resetConfirmPassword}
                     onChange={(e) => setResetConfirmPassword(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-emerald-600"
+                    className={`w-full bg-slate-50 dark:bg-slate-800 border rounded-lg p-2.5 text-slate-900 dark:text-slate-100 focus:outline-none ${
+                      resetConfirmPassword.length > 0 && resetNewPassword !== resetConfirmPassword
+                        ? 'border-rose-500 focus:border-rose-600'
+                        : resetConfirmPassword.length > 0 && resetNewPassword === resetConfirmPassword
+                          ? 'border-emerald-500 focus:border-emerald-600'
+                          : 'border-slate-200 dark:border-slate-700 focus:border-emerald-600'
+                    }`}
                   />
+                  {resetConfirmPassword.length > 0 && (
+                    <p className={`mt-1 text-[11px] font-medium flex items-center gap-1 ${
+                      resetNewPassword === resetConfirmPassword
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-rose-600 dark:text-rose-400'
+                    }`}>
+                      <span className="material-symbols-outlined text-[14px]">
+                        {resetNewPassword === resetConfirmPassword ? 'check_circle' : 'error'}
+                      </span>
+                      {resetNewPassword === resetConfirmPassword ? 'Passwords match' : 'Passwords do not match'}
+                    </p>
+                  )}
                 </div>
               </div>
 

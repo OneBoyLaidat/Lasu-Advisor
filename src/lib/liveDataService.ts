@@ -258,6 +258,12 @@ export async function signUpAccount(data: Parameters<typeof registerNewUser>[0])
           return { success: true, profile, isFirstLogin: true };
         }
       }
+      if (signUpData.user && !signUpData.session) {
+        return {
+          success: false,
+          error: 'Account created, but Supabase Auth still has email confirmation enabled. Turn off "Confirm email" in Supabase Authentication → Providers → Email, or set SUPABASE_SERVICE_ROLE_KEY in Vercel.',
+        };
+      }
     } catch (connectionError) {
       return { success: false, error: describeSupabaseConnectionError(connectionError) };
     }
